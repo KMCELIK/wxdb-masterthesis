@@ -2,6 +2,11 @@ package de.wxdb.wxdb_masterthesis.dto;
 
 import java.time.LocalDateTime;
 
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+
+@ToString
+@EqualsAndHashCode
 public class WeatherRealtimeData {
 	private LocalDateTime time;
 	private Double globRT;
@@ -47,23 +52,5 @@ public class WeatherRealtimeData {
 
 	public void setWindgeschwindigRT(Double windgeschwindigRT) {
 		this.windgeschwindigRT = windgeschwindigRT;
-	}
-
-	@Override
-	public int hashCode() {
-		// TODO Auto-generated method stub
-		return super.hashCode();
-	}
-
-	@Override
-	public boolean equals(Object obj) {
-		// TODO Auto-generated method stub
-		return super.equals(obj);
-	}
-
-	@Override
-	public String toString() {
-		// TODO Auto-generated method stub
-		return super.toString();
 	}
 }

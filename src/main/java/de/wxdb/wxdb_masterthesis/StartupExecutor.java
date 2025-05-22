@@ -7,7 +7,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import de.wxdb.wxdb_masterthesis.service.WeatherDataService;
+import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
 import de.wxdb.wxdb_masterthesis.utils.FluxQueryTemplate;
 
 /**
@@ -21,12 +21,13 @@ import de.wxdb.wxdb_masterthesis.utils.FluxQueryTemplate;
 public class StartupExecutor implements ApplicationRunner {
 	
 	@Autowired
-    private WeatherDataService weatherDataService;
+    private InfluxDbReadWeatherDataService weatherDataService;
 
 	@Override
 	public void run(ApplicationArguments args) throws Exception {
 		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");
-		weatherDataService.retrieveRTWeatherData(LocalDate.now().minusDays(2), FluxQueryTemplate.REALTIME_1H.getTimeInterval());
+		weatherDataService.retrieveRTWeatherData(LocalDate.now().minusDays(2), FluxQueryTemplate.REALTIME_1H);
+		weatherDataService.retrieveRTWeatherData(LocalDate.now().minusDays(2), FluxQueryTemplate.REALTIME_10M);
 		
 	}
 

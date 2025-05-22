@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
@@ -38,15 +39,33 @@ public class BrightskyApiService {
 	@Autowired
 	private RestTemplate restTemplate;
 
+	/**
+	 * Returns a list of dwd weather stations {@link DwdSourceData}.
+	 * @param lat latitude
+	 * @param lon longtitude
+	 * @return list of {@link DwdSourceData}
+	 */
 	public List<DwdSourceData> getDwdStations(Double lat, Double lon) {
 		if (lat == null || lon == null) {
 			lat = latitude;
 			lon = longitude;
 		} 
 
+		// Set Get-Request 
 		String url = String.format(Locale.US, "%s/sources?lat=%.5f&lon=%.5f&max_dist=%d", baseUrl, lat, lon, DISTANCE);
 
-		BrightskyApiSourceResponse response = restTemplate.getForObject(url, BrightskyApiSourceResponse.class);
+
+		BrightskyApiSourceResponse response = null;
+
+		try {
+			// Get Source Response from BrightskyApi
+		    response = restTemplate.getForObject(url, BrightskyApiSourceResponse.class);
+		} catch (RestClientException ex) {
+			log.error("Error occured while retrieving sources by BrightskyApi: " + url, ex);
+		} catch (Exception ex) {
+			log.error("Unexcepted error occured while retrieving sources by BrightskyApi", ex);
+		}
+		
 		return response != null ? response.getSources() : Collections.emptyList();
 	}
 	
@@ -82,7 +101,7 @@ public class BrightskyApiService {
             log.error("Allgemeiner Fehler beim Abruf der Brightsky API: ", ex);
         }
         
-        return response != null ? response : new BrightskySynopResponse(); // leeres Objekt als Fallback
+        return response != null ? response : new BrightskySynopResponse();
     }
 	
 	

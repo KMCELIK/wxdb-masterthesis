@@ -1,0 +1,144 @@
+package de.wxdb.wxdb_masterthesis.dto;
+
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+public class WxdbWeatherData {
+
+	// Weather related
+	private LocalDateTime time;
+	private Double temperature; // °C
+	private Double windDirection; // degrees
+	private Double windSpeed; // m/s
+	private Double globalRadiation; // W/m²
+
+	// Data Source related
+	private String Datasource; // e.g. InfluxDB, DWD
+	private String weatherStationSource; // e.g. Dortmund Weatherstation
+	private long stationSourceId;
+
+	// POJO related -- DB-Username, dataset integration time, version of the dataset in case of updates
+	private String lastChangedBy = "SYSTEM";
+	private LocalDateTime lastChangedTime;
+	private int version = 0;
+
+	public LocalDateTime getTime() {
+		return time;
+	}
+
+	public void setTime(LocalDateTime time) {
+		this.time = time;
+	}
+
+	public Double getTemperature() {
+		return temperature;
+	}
+
+	public void setTemperature(Double temperature) {
+		this.temperature = temperature;
+	}
+
+	public Double getWindDirection() {
+		return windDirection;
+	}
+
+	public void setWindDirection(Double windDirection) {
+		this.windDirection = windDirection;
+	}
+
+	public Double getWindSpeed() {
+		return windSpeed;
+	}
+
+	public void setWindSpeed(Double windSpeed) {
+		this.windSpeed = windSpeed;
+	}
+
+	public Double getGlobalRadiation() {
+		return globalRadiation;
+	}
+
+	public void setGlobalRadiation(Double globalRadiation) {
+		this.globalRadiation = globalRadiation;
+	}
+
+	public String getDatasource() {
+		return Datasource;
+	}
+
+	public void setDatasource(String datasource) {
+		Datasource = datasource;
+	}
+
+	public String getWeatherStationSource() {
+		return weatherStationSource;
+	}
+
+	public void setWeatherStationSource(String weatherStationSource) {
+		this.weatherStationSource = weatherStationSource;
+	}
+
+	public String getLastChangedBy() {
+		return lastChangedBy;
+	}
+
+	public void setLastChangedBy(String lastChangedBy) {
+		this.lastChangedBy = lastChangedBy;
+	}
+
+	public LocalDateTime getLastChangedTime() {
+		return lastChangedTime;
+	}
+
+	public void setLastChangedTime(LocalDateTime lastChangedTime) {
+		this.lastChangedTime = lastChangedTime;
+	}
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(Datasource, globalRadiation, lastChangedBy, lastChangedTime, temperature, time, version,
+				weatherStationSource, windDirection, windSpeed);
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		WxdbWeatherData other = (WxdbWeatherData) obj;
+		return Objects.equals(Datasource, other.Datasource) && Objects.equals(globalRadiation, other.globalRadiation)
+				&& Objects.equals(lastChangedBy, other.lastChangedBy)
+				&& Objects.equals(lastChangedTime, other.lastChangedTime)
+				&& Objects.equals(temperature, other.temperature) && Objects.equals(time, other.time)
+				&& version == other.version && Objects.equals(weatherStationSource, other.weatherStationSource)
+				&& Objects.equals(windDirection, other.windDirection) && Objects.equals(windSpeed, other.windSpeed);
+	}
+
+	@Override
+	public String toString() {
+		return "WxdbWeatherData [time=" + time + ", temperature=" + temperature + ", windDirection=" + windDirection
+				+ ", windSpeed=" + windSpeed + ", globalRadiation=" + globalRadiation + ", Datasource=" + Datasource
+				+ ", weatherStationSource=" + weatherStationSource + ", lastChangedBy=" + lastChangedBy
+				+ ", lastChangedTime=" + lastChangedTime + ", version=" + version + "]";
+	}
+
+	public long getStationSourceId() {
+		return stationSourceId;
+	}
+
+	public void setStationSourceId(long stationSourceId) {
+		this.stationSourceId = stationSourceId;
+	}
+
+}

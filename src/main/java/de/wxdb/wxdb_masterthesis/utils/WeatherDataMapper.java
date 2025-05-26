@@ -1,0 +1,122 @@
+package de.wxdb.wxdb_masterthesis.utils;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import de.wxdb.wxdb_masterthesis.dto.DwdHourlyWeatherData;
+import de.wxdb.wxdb_masterthesis.dto.DwdSynopWeatherData;
+import de.wxdb.wxdb_masterthesis.dto.WeatherHistoricalData;
+import de.wxdb.wxdb_masterthesis.dto.WeatherRealtimeData;
+import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
+
+/**
+ * Mapper class to map the different weather Data types to
+ * {@link WxdbWeatherData} or to transform {@link WxdbWeatherData} to other
+ * Weatherdata types.
+ * 
+ * All mappings in this class assume source = "InfluxDB" and
+ * weatherStationSource = "FH-Dortmund".
+ * 
+ * @author Kaan Mustafa Celik
+ */
+public class WeatherDataMapper {
+	private static final String DEFAULT_INFLUXDB_SOURCE = "InfluxDB";
+	private static final String DEFAULT_INFLUXDB_STATION = "FH-Dortmund";
+	private static final DateTimeFormatter formatter = DateTimeFormatter.ISO_DATE_TIME;
+
+	/**
+	 * Method to map from {@link WeatherRealtimeData}.
+	 * 
+	 * @param realtimeData real time data.
+	 * @return WxdbWeatherData.
+	 */
+	public static WxdbWeatherData fromRealtimeData(WeatherRealtimeData realtimeData) {
+		WxdbWeatherData data = new WxdbWeatherData();
+		data.setTime(realtimeData.getTime());
+		data.setGlobalRadiation(realtimeData.getGlobRT());
+		data.setTemperature(realtimeData.getTempRT());
+		data.setWindDirection(realtimeData.getWindRT());
+		data.setWindSpeed(realtimeData.getWindgeschwindigRT());
+
+		data.setDatasource(DEFAULT_INFLUXDB_SOURCE);
+		data.setWeatherStationSource(DEFAULT_INFLUXDB_STATION);
+		data.setLastChangedBy("SYSTEM");
+		data.setLastChangedTime(LocalDateTime.now());
+		data.setVersion(0);
+
+		return data;
+	}
+
+	/**
+	 * Method to map from {@link WeatherHistoricalData}.
+	 * 
+	 * @param historical historical data sets.
+	 * @return WxdbWeatherData.
+	 */
+	public static WxdbWeatherData fromHistoricalData(WeatherHistoricalData historicalData) {
+		WxdbWeatherData data = new WxdbWeatherData();
+		data.setTime(historicalData.getTime());
+		data.setGlobalRadiation(historicalData.getGlobAVG());
+		data.setTemperature(historicalData.getTempAVG());
+		data.setWindDirection(historicalData.getWindAVG());
+		data.setWindSpeed(historicalData.getWindgeschwindigAVG());
+
+		data.setDatasource(DEFAULT_INFLUXDB_SOURCE);
+		data.setWeatherStationSource(DEFAULT_INFLUXDB_STATION);
+		data.setLastChangedBy("SYSTEM");
+		data.setLastChangedTime(LocalDateTime.now());
+		data.setVersion(0);
+
+		return data;
+	}
+
+	public static List<WxdbWeatherData> mapSynopDataList(List<DwdSynopWeatherData> dwdList) {
+		return dwdList.stream().map(WeatherDataMapper::mapSingle).collect(Collectors.toList());
+	}
+
+	public static WxdbWeatherData mapSingle(DwdSynopWeatherData dwd) {
+		WxdbWeatherData wxdb = new WxdbWeatherData();
+		wxdb.setTime(dwd.getTimestamp() != null ? dwd.getTimestamp().toLocalDateTime() : null);
+		wxdb.setTemperature(dwd.getTemperature());
+		wxdb.setWindDirection(dwd.getWind_direction_10() != null ? dwd.getWind_direction_10().doubleValue() : null);
+		wxdb.setWindSpeed(dwd.getWind_speed_10()); // ggf. andere Aggregation wählen
+		wxdb.setGlobalRadiation(dwd.getSolar_10()); // ggf. auch 30 oder 60
+
+		wxdb.setDatasource("DWD");
+		wxdb.setWeatherStationSource("SYNOP-Brightsky" + dwd.getSource_id());
+		wxdb.setStationSourceId(dwd.getSource_id());
+
+		wxdb.setLastChangedBy("SYSTEM");
+		wxdb.setLastChangedTime(LocalDateTime.now());
+		wxdb.setVersion(1);
+
+		return wxdb;
+	}
+
+	public static List<WxdbWeatherData> mapDwdWeatherDataList(List<DwdHourlyWeatherData> dwdDataList) {
+		return dwdDataList.stream().map(WeatherDataMapper::map).collect(Collectors.toList());
+	}
+
+	public static WxdbWeatherData map(DwdHourlyWeatherData dwdData) {
+		WxdbWeatherData wxdb = new WxdbWeatherData();
+
+		// Zeitkonvertierung
+		wxdb.setTime(LocalDateTime.parse(dwdData.getTimestamp(), formatter));
+
+		wxdb.setStationSourceId(dwdData.getSource_id());
+		wxdb.setTemperature(dwdData.getTemperature());
+		wxdb.setWindDirection(dwdData.getWind_direction() != null ? dwdData.getWind_direction().doubleValue() : null);
+		wxdb.setWindSpeed(dwdData.getWind_speed());
+		wxdb.setGlobalRadiation(dwdData.getSolar());
+
+		wxdb.setDatasource("DWD");
+		wxdb.setWeatherStationSource("DWD" + dwdData.getSource_id());
+		wxdb.setLastChangedBy("SYSTEM");
+		wxdb.setStationSourceId(dwdData.getSource_id());
+		wxdb.setLastChangedTime(LocalDateTime.now());
+
+		return wxdb;
+	}
+}

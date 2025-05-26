@@ -14,6 +14,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import de.wxdb.wxdb_masterthesis.api.BrightskyFeignClient;
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
 import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
@@ -25,22 +26,26 @@ public class BrightskyApiService {
 	/**
 	 * default maximum distance setting to referenced distance to our location.
 	 */
-	private final static long DISTANCE = 10000;
+	private final static long DISTANCE = 50000;
 
 	@Value("${brightsky.base-url}")
 	private String baseUrl;
 
 	@Value("${coordinates.lat}")
-	private double latitude ;
+	private double latitude;
 
 	@Value("${coordinates.lon}")
 	private double longitude;
 
 	@Autowired
 	private RestTemplate restTemplate;
+	
+	@Autowired
+	private BrightskyFeignClient feignClient;
 
 	/**
 	 * Returns a list of dwd weather stations {@link DwdSourceData}.
+	 * 
 	 * @param lat latitude
 	 * @param lon longtitude
 	 * @return list of {@link DwdSourceData}
@@ -49,61 +54,75 @@ public class BrightskyApiService {
 		if (lat == null || lon == null) {
 			lat = latitude;
 			lon = longitude;
-		} 
+		}
 
-		// Set Get-Request 
+		// Set Get-Request
 		String url = String.format(Locale.US, "%s/sources?lat=%.5f&lon=%.5f&max_dist=%d", baseUrl, lat, lon, DISTANCE);
-
 
 		BrightskyApiSourceResponse response = null;
 
 		try {
 			// Get Source Response from BrightskyApi
-		    response = restTemplate.getForObject(url, BrightskyApiSourceResponse.class);
+			response = restTemplate.getForObject(url, BrightskyApiSourceResponse.class);
 		} catch (RestClientException ex) {
 			log.error("Error occured while retrieving sources by BrightskyApi: " + url, ex);
 		} catch (Exception ex) {
 			log.error("Unexcepted error occured while retrieving sources by BrightskyApi", ex);
 		}
-		
+
 		return response != null ? response.getSources() : Collections.emptyList();
 	}
 	
-    public BrightskySynopResponse getDwdData10MinutesInterval(LocalDate startDate, List<String> dwdIds, List<String> wmoIds) {
-        LocalDate endDate = LocalDate.now();
+	public BrightskyApiSourceResponse getDwdWeatherDataHourlyInterval(LocalDate startDate, LocalDate endDate, List<Long> stationSourceIds) {
+		if (endDate == null) {
+			endDate = LocalDate.now();
+		}
+		BrightskyApiSourceResponse response = new BrightskyApiSourceResponse();
+		
+		try {
+			 response = feignClient.getWeatherBySourceIds(startDate.toString(), endDate.toString(), stationSourceIds);
+		} catch (HttpStatusCodeException ex) {
+			log.error("Brightsky API Fehler: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+		} catch (RuntimeException ex) {
+			log.error("Allgemeiner Fehler beim Abruf der Brightsky API: ", ex);
+		}
+		
+		// case if sourceIds didn't get any data
+		if (response.getWeather().isEmpty()) {
+			try {
+				response = feignClient.getWeatherByGeography(startDate.toString(), endDate.toString(), latitude, longitude);
+			} catch (HttpStatusCodeException ex) {
+				log.error("Brightsky API Fehler: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+			} catch (RuntimeException ex) {
+				log.error("Allgemeiner Fehler beim Abruf der Brightsky API: ", ex);
+			}
+		}
+		
+		return response;
+		
+	}
 
-        StringBuilder urlBuilder = new StringBuilder(String.format("%s/synop?date=%s&last_date=%s", 
-            baseUrl, 
-            startDate.toString(), 
-            endDate.toString()
-        ));
-
-        if (dwdIds != null && !dwdIds.isEmpty()) {
-            for (String id : dwdIds) {
-                urlBuilder.append("&dwd_station_id=").append(id);
-            }
-        }
-
-        if (wmoIds != null && !wmoIds.isEmpty()) {
-            for (String id : wmoIds) {
-                urlBuilder.append("&wmo_station_id=").append(id);
-            }
-        }
-
-        String url = urlBuilder.toString();
-
-        BrightskySynopResponse response = null;
-        try {
-            response = restTemplate.getForObject(url, BrightskySynopResponse.class);
-        } catch (HttpStatusCodeException ex) {
-            log.error("Brightsky API Fehler: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
-        } catch (Exception ex) {
-            log.error("Allgemeiner Fehler beim Abruf der Brightsky API: ", ex);
-        }
-        
-        return response != null ? response : new BrightskySynopResponse();
-    }
-	
-	
+	/**
+	 * This Method can only retrieve data that is 30 hours old but in 10 minute intervals
+	 * @param startDate
+	 * @param endDate
+	 * @param dwdIds
+	 * @param wmoIds
+	 * @return
+	 */
+	public BrightskySynopResponse getDwdData10MinutesInterval(List<Long> synopStationIds) {
+		LocalDate synopDate = LocalDate.now().minusDays(2);
+		BrightskySynopResponse response = new BrightskySynopResponse();
+		
+		try {
+			 response = feignClient.getSynop(synopDate.toString(), LocalDate.now().toString(), synopStationIds);
+		} catch (HttpStatusCodeException ex) {
+			log.error("Brightsky API Fehler: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+		} catch (RuntimeException ex) {
+			log.error("Allgemeiner Fehler beim Abruf der Brightsky API: ", ex);
+		}
+		
+		return response != null ? response : new BrightskySynopResponse();
+	}
 
 }

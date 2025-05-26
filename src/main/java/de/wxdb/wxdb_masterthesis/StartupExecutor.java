@@ -7,8 +7,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
-import de.wxdb.wxdb_masterthesis.utils.FluxQueryTemplate;
+import de.wxdb.wxdb_masterthesis.process.WeatherImportProcess;
 
 /**
  * Direkte Ausführung bestimmter Methoden ohne API-Einbindung.
@@ -21,13 +20,17 @@ import de.wxdb.wxdb_masterthesis.utils.FluxQueryTemplate;
 public class StartupExecutor implements ApplicationRunner {
 	
 	@Autowired
-    private InfluxDbReadWeatherDataService weatherDataService;
+    private WeatherImportProcess importProcess;
 
 	@Override
 	public void run(ApplicationArguments args) throws Exception {
 		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");
-		weatherDataService.retrieveRTWeatherData(LocalDate.now().minusDays(2), FluxQueryTemplate.REALTIME_1H);
-		weatherDataService.retrieveRTWeatherData(LocalDate.now().minusDays(2), FluxQueryTemplate.REALTIME_10M);
+		importProcess.importWeatherData(LocalDate.now().minusDays(7), null, true, true);
+		
+		// other test cases:
+	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now(), false, true);
+	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now().minusDays(1), true, false);
+	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now().minusDays(1), false, false);
 		
 	}
 

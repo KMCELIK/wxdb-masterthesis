@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
 
-@FeignClient(name = "brightskyClient", url = "${brightsky.api.baseurl}")
+@FeignClient(name = "brightskyClient", url = "${brightsky.base-url}")
 public interface BrightskyFeignClient {
 
 	/**

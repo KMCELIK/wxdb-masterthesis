@@ -5,33 +5,46 @@ import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import de.wxdb.wxdb_masterthesis.process.WeatherImportProcess;
 
 /**
- * Direkte Ausführung bestimmter Methoden ohne API-Einbindung.
- * Diese Klasse schafft sich im Verlauf des Projektes ab,
- * sie wird nur genutzt um bei Bedarf die direkte Ausführung von diversen Services zu ermöglichen.
+ * Direkte Ausführung bestimmter Methoden ohne API-Einbindung. Diese Klasse
+ * schafft sich im Verlauf des Projektes ab, sie wird nur genutzt um bei Bedarf
+ * die direkte Ausführung von diversen Services zu ermöglichen.
  *
  * @author Kaan Mustafa Celik
  */
 @Component
 public class StartupExecutor implements ApplicationRunner {
+
+	@Autowired
+	private WeatherImportProcess importProcess;
 	
 	@Autowired
-    private WeatherImportProcess importProcess;
+	private ApplicationContext context;
 
 	@Override
 	public void run(ApplicationArguments args) throws Exception {
 		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");
-		importProcess.importWeatherData(LocalDate.now().minusDays(7), null, true, true);
-		
+		// importProcess.importWeatherDataByTypeAndInterval(LocalDate.now().minusDays(7), null, true, true);
+		importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now());
+		System.out.println("[StartupRunner] Beende WeatherDataService in 1 Sekunde ...");
+
+		// Shutdown Spring Boot ApplicationContext
+		int exitCode = SpringApplication.exit(context, () -> 0);
+		System.exit(exitCode);
 		// other test cases:
-	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now(), false, true);
-	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now().minusDays(1), true, false);
-	//	importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now().minusDays(1), false, false);
-		
+		// importProcess.importWeatherData(LocalDate.now().minusDays(7),
+		// LocalDate.now(), false, true);
+		// importProcess.importWeatherData(LocalDate.now().minusDays(7),
+		// LocalDate.now().minusDays(1), true, false);
+		// importProcess.importWeatherData(LocalDate.now().minusDays(7),
+		// LocalDate.now().minusDays(1), false, false);
+
 	}
 
 }

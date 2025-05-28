@@ -3,7 +3,19 @@ package de.wxdb.wxdb_masterthesis.dto;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "wetterdaten")
 public class WxdbWeatherData {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
 	// Weather related
 	private LocalDateTime time;
@@ -21,6 +33,14 @@ public class WxdbWeatherData {
 	private String lastChangedBy = "SYSTEM";
 	private LocalDateTime lastChangedTime;
 	private int version = 0;
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public Long getId() {
+		return id;
+	}
 
 	public LocalDateTime getTime() {
 		return time;

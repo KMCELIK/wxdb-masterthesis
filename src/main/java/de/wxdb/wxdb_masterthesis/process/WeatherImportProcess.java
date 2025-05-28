@@ -191,6 +191,9 @@ public class WeatherImportProcess {
 
 	    log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", result.size());
 
+	    
+	    // Es fehlt beim Import noch der Imputationsprouzess also das nicht nur die Stationen und Daten gezogen werden sondern
+	    // auch immer die Daten welche vollständig und von der Distanz am nahsten sind auch integriert werden, stand jetzt wird einfach der "beste Wert" genommen.
 	    // TODO: Integration in Zielsystem
 	}
 

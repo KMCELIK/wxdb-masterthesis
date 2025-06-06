@@ -44,6 +44,7 @@ public class WeatherDataMapper {
 		data.setWeatherStationSource(DEFAULT_INFLUXDB_STATION);
 		data.setLastChangedBy("SYSTEM");
 		data.setLastChangedTime(LocalDateTime.now());
+		data.setRealtime(true);
 		data.setVersion(0);
 
 		return data;
@@ -68,6 +69,7 @@ public class WeatherDataMapper {
 		data.setLastChangedBy("SYSTEM");
 		data.setLastChangedTime(LocalDateTime.now());
 		data.setVersion(0);
+		data.setRealtime(false);
 
 		return data;
 	}
@@ -80,17 +82,45 @@ public class WeatherDataMapper {
 		WxdbWeatherData wxdb = new WxdbWeatherData();
 		wxdb.setTime(dwd.getTimestamp() != null ? dwd.getTimestamp().toLocalDateTime() : null);
 		wxdb.setTemperature(dwd.getTemperature());
-		wxdb.setWindDirection(dwd.getWind_direction_10() != null ? dwd.getWind_direction_10().doubleValue() : null);
-		wxdb.setWindSpeed(dwd.getWind_speed_10()); // ggf. andere Aggregation wählen
-		wxdb.setGlobalRadiation(dwd.getSolar_10()); // ggf. auch 30 oder 60
+
+		// Windrichtung
+		Integer windDirection = dwd.getWind_direction_10();
+		if (windDirection == null) {
+		    windDirection = dwd.getWind_direction_30();
+		}
+		if (windDirection == null) {
+		    windDirection = dwd.getWind_direction_60();
+		}
+		wxdb.setWindDirection(windDirection != null ? windDirection.doubleValue() : null);
+
+		// Windgeschwindigkeit
+		Double windSpeed = dwd.getWind_speed_10();
+		if (windSpeed == null) {
+		    windSpeed = dwd.getWind_speed_30();
+		}
+		if (windSpeed == null) {
+		    windSpeed = dwd.getWind_speed_60();
+		}
+		wxdb.setWindSpeed(windSpeed != null ? windSpeed.doubleValue() : null);
+
+		// Globalstrahlung
+		Double globalRadiation = dwd.getSolar_10();
+		if (globalRadiation == null) {
+		    globalRadiation = dwd.getSolar_30();
+		}
+		if (globalRadiation == null) {
+		    globalRadiation = dwd.getSolar_60();
+		}
+		wxdb.setGlobalRadiation(globalRadiation != null ? globalRadiation.doubleValue() : null);
 
 		wxdb.setDatasource("DWD");
-		wxdb.setWeatherStationSource("SYNOP-Brightsky" + dwd.getSource_id());
+		wxdb.setWeatherStationSource("SYNOP-Brightsky-" + dwd.getSource_id());
 		wxdb.setStationSourceId(dwd.getSource_id());
 
 		wxdb.setLastChangedBy("SYSTEM");
 		wxdb.setLastChangedTime(LocalDateTime.now());
 		wxdb.setVersion(1);
+		wxdb.setRealtime(true);
 
 		return wxdb;
 	}
@@ -112,10 +142,11 @@ public class WeatherDataMapper {
 		wxdb.setGlobalRadiation(dwdData.getSolar());
 
 		wxdb.setDatasource("DWD");
-		wxdb.setWeatherStationSource("DWD" + dwdData.getSource_id());
+		wxdb.setWeatherStationSource("DWD-" + dwdData.getSource_id());
 		wxdb.setLastChangedBy("SYSTEM");
 		wxdb.setStationSourceId(dwdData.getSource_id());
 		wxdb.setLastChangedTime(LocalDateTime.now());
+		wxdb.setRealtime(false);
 
 		return wxdb;
 	}

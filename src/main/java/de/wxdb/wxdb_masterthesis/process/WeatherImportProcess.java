@@ -21,8 +21,10 @@ import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
 import de.wxdb.wxdb_masterthesis.dto.WeatherHistoricalData;
 import de.wxdb.wxdb_masterthesis.dto.WeatherRealtimeData;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
+import de.wxdb.wxdb_masterthesis.schema.Processlog;
 import de.wxdb.wxdb_masterthesis.service.BrightskyApiService;
 import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
+import de.wxdb.wxdb_masterthesis.service.InsertWxdbService;
 import de.wxdb.wxdb_masterthesis.utils.FluxQueryTemplate;
 import de.wxdb.wxdb_masterthesis.utils.LocalDateTimeRange;
 import de.wxdb.wxdb_masterthesis.utils.WeatherDataMapper;
@@ -38,12 +40,15 @@ public class WeatherImportProcess {
 
 	@Autowired
 	private BrightskyApiService brightskyApiService;
+	
+	@Autowired
+	private InsertWxdbService insertWxdbService;
 
 	public void importWeatherDataByTypeAndInterval(LocalDate startDate, LocalDate endDate, boolean getRealtimeData,
 			boolean isHourlyInterval) {
-		if (startDate == null) {
+		if (startDate == null || getRealtimeData) {
 			// if no startDate given retrieve current weeks real time data
-			startDate = LocalDate.now().minusDays(7);
+			startDate = LocalDate.now().minusDays(2);
 			getRealtimeData = true;
 		}
 
@@ -123,14 +128,17 @@ public class WeatherImportProcess {
 	}
 	
 	public void importWeatherData(LocalDate startDate, LocalDate endDate) {
-	    if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+		// 1. Prüfen ob Zeitraum gültig ist.
+		if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
 	        log.warn("Ungültiger Zeitraum für den Import.");
 	        return;
 	    }
+		
+		Processlog processLog =  insertWxdbService.startProcessLog("IMPORT-WeatherData", LocalDateTime.now());
 
 	    List<WxdbWeatherData> collected = new ArrayList<>();
 
-	    // 1. Realtime Daten (sofern Zeitraum gültig)
+	    // 1. Realtime Daten (sofern Zeitraum gültig) - InlfuxDB
 	    if (!endDate.isBefore(LocalDate.now())) {
 	        log.info("Versuche Realtime 10-Minuten-Daten...");
 	        collected.addAll(weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_10M)
@@ -141,7 +149,7 @@ public class WeatherImportProcess {
 	                .stream().map(WeatherDataMapper::fromRealtimeData).toList());
 	    }
 
-	    // 2. Historische Daten
+	    // 2. Historische Daten - InfluxDB
 	    log.info("Versuche historische 10-Minuten-Daten...");
 	    collected.addAll(weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_10M)
 	            .stream().map(WeatherDataMapper::fromHistoricalData).toList());
@@ -150,51 +158,81 @@ public class WeatherImportProcess {
 	    collected.addAll(weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_1H)
 	            .stream().map(WeatherDataMapper::fromHistoricalData).toList());
 
-	    // 3. Lücken analysieren
-	    List<WxdbWeatherData> invalidData = collected.stream()
-	            .filter(d -> !WeatherDataValidator.isValid(d))
-	            .collect(Collectors.toList());
+	    // 3. unvollständige Datensätze herausfiltern
+	    log.info("valid datasets before filter: " + collected.size());
+	    List<WxdbWeatherData> invalidData = new ArrayList<>();
+	    collected.removeIf(wd -> {
+	        if (wd == null || !WeatherDataValidator.isValid(wd)) {
+	            invalidData.add(wd); // invalidData ist z. B. eine separate List<WeatherData>
+	            return true; // Entferne dieses Element aus collected
+	        }
+	        return false; // Behalte das Element
+	    });
+	    
+	    log.info("valid datasets after filter: " + collected.size());
 
+	    // Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
 	    if (!invalidData.isEmpty()) {
 	        log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky)", invalidData.size());
 
+	        // Bestimmen der Zeiträume für die fehlerhaften Zeiträume falls es mehrere Zeitraum lücken gibt.
 	        Set<LocalDateTime> invalidTimestamps = invalidData.stream()
 	                .map(WxdbWeatherData::getTime)
 	                .filter(Objects::nonNull)
 	                .collect(Collectors.toCollection(TreeSet::new));
 
+	        // wenn es Lücken gibt welche zu lang sind z.B. 30 Stunden, dann werden verteilte Zeiträume erstellt (um die Schnittstelle nicht zu sehr auszulasten)
 	        List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange.groupToBroadRanges(
-	                new ArrayList<>(invalidTimestamps), 50);
+	                new ArrayList<>(invalidTimestamps), 30);
 
+	        // Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
 	        List<DwdSourceData> stations = brightskyApiService.getDwdStations(null, null);
 	        List<Long> nearestStationIds = filterNearestSources(stations, 100).stream()
 	                .map(DwdSourceData::getId)
 	                .collect(Collectors.toList());
 
-	        for (LocalDateTimeRange range : invalidRanges) {
-	            boolean isRecent = range.getStartDate().isAfter(LocalDateTime.now().minusHours(31));
-	            if (isRecent) {
-	                BrightskySynopResponse synop = brightskyApiService.getDwdData10MinutesInterval(nearestStationIds);
-	                collected.addAll(WeatherDataMapper.mapSynopDataList(synop.getWeather()));
-	            }
+			for (LocalDateTimeRange range : invalidRanges) {
+				// gesammter Zeitraum ist inkludiert d.h. 10-minuten Daten sind voll abrufbar und müssten ausreichen
+				boolean isRecent = range.getStartDate().isAfter(LocalDateTime.now().minusHours(31));
+				if (isRecent) {
+					BrightskySynopResponse synop = brightskyApiService.getDwdData10MinutesInterval(nearestStationIds);
+					collected.addAll(WeatherDataMapper.mapSynopDataList(synop.getWeather()));
+				} else {
+					// in diesem Fall werden Synop Daten nur beansprucht falls der Zeitraum sich mit unserem Zeitraum von 30h before und LocalDate.now() schneidet.
+					if (range.getEndDate().isAfter(LocalDateTime.now().minusHours(31))) {
+						BrightskySynopResponse synop = brightskyApiService.getDwdData10MinutesInterval(nearestStationIds);
+						collected.addAll(WeatherDataMapper.mapSynopDataList(synop.getWeather()).stream()
+								.filter(synopData -> WeatherDataValidator.isValid(synopData) 
+										&& WeatherDataValidator.isSynopDaterange(synopData)).collect(Collectors.toList()));
+					}
 
-	            BrightskyApiSourceResponse hourly = brightskyApiService.getDwdWeatherDataHourlyInterval(
-	                    range.getStartDate().toLocalDate(), range.getEndDate().toLocalDate(), nearestStationIds);
-	            collected.addAll(WeatherDataMapper.mapDwdWeatherDataList(hourly.getWeather()));
-	        }
-	    }
-
-	    // 4. Bereinigen und verbessern
+					BrightskyApiSourceResponse hourly = brightskyApiService.getDwdWeatherDataHourlyInterval(
+							range.getStartDate().toLocalDate(), range.getEndDate().toLocalDate(), nearestStationIds);
+					collected.addAll(WeatherDataMapper.mapDwdWeatherDataList(hourly.getWeather()));
+				}
+			}
+		}
+	   
+	    // Bereinigen und verbessern
 	    List<WxdbWeatherData> result = WeatherDataValidator.deduplicateAndImprove(
-	            collected.stream().filter(r -> !WeatherDataValidator.isValid(r)).toList());
+	            collected.stream().filter(r -> WeatherDataValidator.isValid(r)).toList());
 	    result.sort(Comparator.comparing(WxdbWeatherData::getTime));
 
 	    log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", result.size());
-
-	    
+	   
 	    // Es fehlt beim Import noch der Imputationsprouzess also das nicht nur die Stationen und Daten gezogen werden sondern
 	    // auch immer die Daten welche vollständig und von der Distanz am nahsten sind auch integriert werden, stand jetzt wird einfach der "beste Wert" genommen.
 	    // TODO: Integration in Zielsystem
+	    try {
+		    insertWxdbService.insertWeatherData(result);
+
+			insertWxdbService.completeProcessLog(processLog, true, result.size() + " Datensätze wurden erfolgreich importiert.");
+		    log.info("insert completed - datasets: {}", result.toString());
+	    } catch (RuntimeException e) {
+	    	insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + e.getStackTrace());
+	    	log.error("Wxdb Insert failed due to: ",e);
+	    }
+	    
 	}
 
 	/**

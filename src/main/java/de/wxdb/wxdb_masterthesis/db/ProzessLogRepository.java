@@ -4,11 +4,13 @@ import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ProzessLogRepository extends JpaRepository<Prozesslog, Long> {
+import de.wxdb.wxdb_masterthesis.schema.Processlog;
+
+public interface ProzessLogRepository extends JpaRepository<Processlog, Long> {
 
     // Optional: Prozesse nach Name filtern
-    List<Prozesslog> findByProzessName(String prozessName);
+    List<Processlog> findByProzessName(String prozessName);
 
     // Optional: Letzter Eintrag zu einem Prozess
-    Prozesslog findTopByProzessNameOrderByZeitstempelDesc(String prozessName);
+    Processlog findTopByProzessNameOrderByZeitstempelDesc(String prozessName);
 }

@@ -31,6 +31,8 @@ public class StartupExecutor implements ApplicationRunner {
 	public void run(ApplicationArguments args) throws Exception {
 		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");
 		// importProcess.importWeatherDataByTypeAndInterval(LocalDate.now().minusDays(7), null, true, true);
+		
+		
 		importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now());
 		System.out.println("[StartupRunner] Beende WeatherDataService in 1 Sekunde ...");
 

@@ -3,10 +3,13 @@ package de.wxdb.wxdb_masterthesis.dto;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
+import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 @Entity
@@ -28,11 +31,20 @@ public class WxdbWeatherData {
 	private String Datasource; // e.g. InfluxDB, DWD
 	private String weatherStationSource; // e.g. Dortmund Weatherstation
 	private long stationSourceId;
+	private boolean isRealtime;
 
-	// POJO related -- DB-Username, dataset integration time, version of the dataset in case of updates
+	// POJO related -- DB-Username, dataset integration time, version of the dataset
+	// in case of updates
 	private String lastChangedBy = "SYSTEM";
 	private LocalDateTime lastChangedTime;
 	private int version = 0;
+
+	// Imputation:
+	private boolean imputed;
+
+	@ManyToOne
+	@JoinColumn(name = "imputation_zusammenfassung_id")
+	private ImputationSummary zusammenfassung;
 
 	public void setId(Long id) {
 		this.id = id;
@@ -122,6 +134,22 @@ public class WxdbWeatherData {
 		this.version = version;
 	}
 
+	public boolean isImputed() {
+		return imputed;
+	}
+
+	public void setImputed(boolean imputed) {
+		this.imputed = imputed;
+	}
+
+	public ImputationSummary getZusammenfassung() {
+		return zusammenfassung;
+	}
+
+	public void setZusammenfassung(ImputationSummary zusammenfassung) {
+		this.zusammenfassung = zusammenfassung;
+	}
+
 	@Override
 	public int hashCode() {
 		return Objects.hash(Datasource, globalRadiation, lastChangedBy, lastChangedTime, temperature, time, version,
@@ -159,6 +187,14 @@ public class WxdbWeatherData {
 
 	public void setStationSourceId(long stationSourceId) {
 		this.stationSourceId = stationSourceId;
+	}
+
+	public boolean isRealtime() {
+		return isRealtime;
+	}
+
+	public void setRealtime(boolean isRealtime) {
+		this.isRealtime = isRealtime;
 	}
 
 }

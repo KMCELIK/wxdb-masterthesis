@@ -3,6 +3,7 @@ package de.wxdb.wxdb_masterthesis.utils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -49,12 +50,16 @@ public class LocalDateTimeRange {
 	 * @param sortedTimestamps
 	 * @return
 	 */
-	public static List<LocalDateTimeRange> groupToBroadRanges(List<LocalDateTime> sortedTimestamps, int maxGapInHours) {
+	public static List<LocalDateTimeRange> groupToBroadRanges(List<LocalDateTime> timestamps, int maxGapInHours) {
 		List<LocalDateTimeRange> ranges = new ArrayList<>();
-		if (sortedTimestamps == null || sortedTimestamps.isEmpty())
+		if (timestamps == null || timestamps.isEmpty())
 			return ranges;
 
-		if (maxGapInHours == 0) {
+		// Safety: Sortiere die Liste
+		List<LocalDateTime> sortedTimestamps = new ArrayList<>(timestamps);
+		sortedTimestamps.sort(Comparator.naturalOrder());
+
+		if (maxGapInHours <= 0) {
 			maxGapInHours = 50;
 		}
 		Duration maxGap = Duration.ofHours(maxGapInHours);
@@ -66,15 +71,19 @@ public class LocalDateTimeRange {
 			LocalDateTime current = sortedTimestamps.get(i);
 
 			if (Duration.between(previous, current).compareTo(maxGap) > 0) {
-				ranges.add(new LocalDateTimeRange(start, previous));
+				// Nur hinzufügen, wenn Range korrekt ist
+				if (!start.isAfter(previous)) {
+					ranges.add(new LocalDateTimeRange(start, previous));
+				}
 				start = current;
 			}
-
 			previous = current;
 		}
 
-		// Letzten Bereich hinzufügen
-		ranges.add(new LocalDateTimeRange(start, previous));
+		// Finaler Bereich
+		if (!start.isAfter(previous)) {
+			ranges.add(new LocalDateTimeRange(start, previous));
+		}
 
 		return ranges;
 	}

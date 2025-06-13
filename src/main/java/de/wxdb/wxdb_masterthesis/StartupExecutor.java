@@ -29,16 +29,14 @@ public class StartupExecutor implements ApplicationRunner {
 
 	@Override
 	public void run(ApplicationArguments args) throws Exception {
-		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");
-		// importProcess.importWeatherDataByTypeAndInterval(LocalDate.now().minusDays(7), null, true, true);
-		
-		
-		importProcess.importWeatherData(LocalDate.now().minusDays(7), LocalDate.now());
+		System.out.println("[StartupRunner] Starte WeatherDataService in 1 Sekunde ...");				
+		importProcess.importWeatherData(LocalDate.of(2025, 1, 1), LocalDate.now());
 		System.out.println("[StartupRunner] Beende WeatherDataService in 1 Sekunde ...");
-
+		
 		// Shutdown Spring Boot ApplicationContext
 		int exitCode = SpringApplication.exit(context, () -> 0);
 		System.exit(exitCode);
+
 		// other test cases:
 		// importProcess.importWeatherData(LocalDate.now().minusDays(7),
 		// LocalDate.now(), false, true);
@@ -46,7 +44,6 @@ public class StartupExecutor implements ApplicationRunner {
 		// LocalDate.now().minusDays(1), true, false);
 		// importProcess.importWeatherData(LocalDate.now().minusDays(7),
 		// LocalDate.now().minusDays(1), false, false);
-
 	}
 
 }

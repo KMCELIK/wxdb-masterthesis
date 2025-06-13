@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
@@ -15,12 +17,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import de.wxdb.wxdb_masterthesis.db.ImputationSummaryRepository;
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
 import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
-import de.wxdb.wxdb_masterthesis.dto.WeatherHistoricalData;
-import de.wxdb.wxdb_masterthesis.dto.WeatherRealtimeData;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
+import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
+import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
 import de.wxdb.wxdb_masterthesis.schema.Processlog;
 import de.wxdb.wxdb_masterthesis.service.BrightskyApiService;
 import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
@@ -32,7 +35,7 @@ import de.wxdb.wxdb_masterthesis.utils.WeatherDataValidator;
 
 @Component
 public class WeatherImportProcess {
-	
+
 	private static final Logger log = LoggerFactory.getLogger(WeatherImportProcess.class);
 
 	@Autowired
@@ -40,199 +43,149 @@ public class WeatherImportProcess {
 
 	@Autowired
 	private BrightskyApiService brightskyApiService;
-	
+
 	@Autowired
 	private InsertWxdbService insertWxdbService;
 
-	public void importWeatherDataByTypeAndInterval(LocalDate startDate, LocalDate endDate, boolean getRealtimeData,
-			boolean isHourlyInterval) {
-		if (startDate == null || getRealtimeData) {
-			// if no startDate given retrieve current weeks real time data
-			startDate = LocalDate.now().minusDays(2);
-			getRealtimeData = true;
-		}
+	@Autowired
+	private ImputationSummaryRepository imputationSumRepo;
 
-		List<WxdbWeatherData> weatherData = new ArrayList<WxdbWeatherData>();
-		// 1. Retrieve InfluxDB Datasets
-		if (getRealtimeData) {
-			// if real time is activated then set endDate to today due to influxDB real time data is limited to the current date range.
-			endDate = LocalDate.now();
-
-			List<WeatherRealtimeData> influxRtData = isHourlyInterval
-					? weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_1H)
-					: weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_10M);
-			influxRtData.forEach(rtd -> weatherData.add(WeatherDataMapper.fromRealtimeData(rtd)));
-		} else {
-			List<WeatherHistoricalData> influxHistoricalData = isHourlyInterval
-					? weatherDataService.retrieveHistoricalWeatherData(startDate, endDate,
-							FluxQueryTemplate.HISTORICAL_1H)
-					: weatherDataService.retrieveHistoricalWeatherData(startDate, endDate,
-							FluxQueryTemplate.HISTORICAL_10M);
-			influxHistoricalData.forEach(hd -> weatherData.add(WeatherDataMapper.fromHistoricalData(hd)));
-		}
-
-		// 2. Check Datasets which are missing or including invalid values.
-		List<WxdbWeatherData> invalidWeatherData = weatherData.stream()
-				.filter(data -> !WeatherDataValidator.isValid(data)).collect(Collectors.toList());
-
-		// 3. If list of invalid weatherdata is empty, skip to 7.
-		if (!invalidWeatherData.isEmpty()) {
-			// 4. parse the date range of the invalid datasets
-			Set<LocalDateTime> invalidTimestamps = invalidWeatherData.stream().map(WxdbWeatherData::getTime)
-					.filter(Objects::nonNull).collect(Collectors.toCollection(TreeSet::new)); // sortiert
-
-			List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange
-					.groupToBroadRanges(new ArrayList<>(invalidTimestamps), 50);
-
-			// 5. Retrieve missing data sets from other ext. sources -- 5.1. Retrieve DWD-Stations from BrightskyApi
-			List<DwdSourceData> locations = brightskyApiService.getDwdStations(null, null);
-			List<DwdSourceData> nearestLocations = filterNearestSources(locations, 100);
-			if (nearestLocations.isEmpty()) {
-				log.warn("No Weather Stations were found!");
-			}
-
-			// map dwdStationId or WmoStationId - some stations have only one of both ids
-			List<Long> stationSourceIds = new ArrayList<>();
-			for (DwdSourceData source : nearestLocations) {
-				stationSourceIds.add(source.getId());
-			}
-			List<WxdbWeatherData> validDatasets = new ArrayList<WxdbWeatherData>();
-			
-			// 5.2. Imputation - Retrieve data sets from BrightskyApi for the Set Time ranges
-			invalidRanges.forEach(iR -> {
-				// difference between endpoints due to intervals
-				BrightskyApiSourceResponse weatherResponse = new BrightskyApiSourceResponse();
-				
-				if (!isHourlyInterval && iR.getStartDate().isAfter(LocalDateTime.now().minusHours(31))) {
-					// only 30 hours old data can be retrieved
-					BrightskySynopResponse synopResponse = brightskyApiService.getDwdData10MinutesInterval(stationSourceIds);
-					// todo: synopresponse zu liste von daten mappen
-					validDatasets.addAll(WeatherDataMapper.mapSynopDataList(synopResponse.getWeather()));
-					
-				} else {
-					weatherResponse = brightskyApiService.getDwdWeatherDataHourlyInterval(iR.getStartDate().toLocalDate(), 
-							iR.getEndDate().toLocalDate(), stationSourceIds);
-					validDatasets.addAll(WeatherDataMapper.mapDwdWeatherDataList(weatherResponse.getWeather()));
-				}
-			});
-			validDatasets.addAll(weatherData);
-			// nun validieren wir die neuen Daten
-			validDatasets.removeIf(cD -> !WeatherDataValidator.isValid(cD)); // Frage: was ist wenn ein Wert: sonnenstrahlung = 0.0.
-			// duplizierte Werte vereinheitlichen, genauere Messungen bevorzugen
-			List<WxdbWeatherData> correctedDatasets =  WeatherDataValidator.deduplicateAndImprove(validDatasets);
-			// sortieren nach Zeit ASC
-			correctedDatasets.sort(Comparator.comparing(WxdbWeatherData::getTime));
-		}
-		// 7. Integrate the data sets to wxdb.
-
-	}
-	
+	/**
+	 * Gesammter Importierungsprozess von Wxdb-Wetterdaten. - Erhalt von Daten aus
+	 * der InfluxDB - Erhalt von BrightskyAPI Daten - Validierung von erhaltenen
+	 * Daten, Prüfung auf Fehler. - Imputation von fehlerhaften oder fehlenden Daten
+	 * - Integration in die Wxdb Datenbank
+	 * 
+	 * @param startDate startdatum
+	 * @param endDate   enddatum für den ausgewählten Zeitraum
+	 */
 	public void importWeatherData(LocalDate startDate, LocalDate endDate) {
 		// 1. Prüfen ob Zeitraum gültig ist.
 		if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
-	        log.warn("Ungültiger Zeitraum für den Import.");
-	        return;
-	    }
-		
-		Processlog processLog =  insertWxdbService.startProcessLog("IMPORT-WeatherData", LocalDateTime.now());
+			log.warn("Ungültiger Zeitraum für den Import.");
+			return;
+		}
+		// Datenbank logeintrag
+		Processlog processLog = insertWxdbService.startProcessLog("IMPORT-WeatherData", LocalDateTime.now());
 
-	    List<WxdbWeatherData> collected = new ArrayList<>();
+		// initialisierung der Listen und Maps
+		List<WxdbWeatherData> validData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> invalidData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> notImputableData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> dwdDatasets = new ArrayList<WxdbWeatherData>();
 
-	    // 1. Realtime Daten (sofern Zeitraum gültig) - InlfuxDB
-	    if (!endDate.isBefore(LocalDate.now())) {
-	        log.info("Versuche Realtime 10-Minuten-Daten...");
-	        collected.addAll(weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_10M)
-	                .stream().map(WeatherDataMapper::fromRealtimeData).toList());
+		Map<Long, Integer> stationIdToDistance = new HashMap<Long, Integer>();
+		Map<LocalDateTime, WxdbWeatherData> correctedDataMap = new HashMap<>();
 
-	        log.info("Versuche Realtime Stunden-Daten...");
-	        collected.addAll(weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_1H)
-	                .stream().map(WeatherDataMapper::fromRealtimeData).toList());
-	    }
+		// 1. Realtime Daten (sofern Zeitraum gültig) - InfluxDB
+		if (!endDate.isBefore(LocalDate.now())) {
+			log.info("Erhalte Echtzeitdaten aus der InfluxDB-Datenbank");
+			validData.addAll(weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_10M)
+					.stream().map(WeatherDataMapper::fromRealtimeData).toList());
+			log.debug("Echtzeitdaten wurden extrahiert - Menge der extrahierten Datensätze: {}", validData.size());
 
-	    // 2. Historische Daten - InfluxDB
-	    log.info("Versuche historische 10-Minuten-Daten...");
-	    collected.addAll(weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_10M)
-	            .stream().map(WeatherDataMapper::fromHistoricalData).toList());
+			validData.addAll(weatherDataService.retrieveRTWeatherData(startDate, FluxQueryTemplate.REALTIME_1H).stream()
+					.map(WeatherDataMapper::fromRealtimeData).toList());
+			log.debug("Echtzeitdaten wurden extrahiert - Menge aller Echtzeitdatensätze: {}", validData.size());
+		}
 
-	    log.info("Versuche historische Stunden-Daten...");
-	    collected.addAll(weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_1H)
-	            .stream().map(WeatherDataMapper::fromHistoricalData).toList());
+		// 2. Historische Daten - InfluxDB
+		log.info("Erhalte historische Daten aus der InfluxDB-Datenbank");
+		validData.addAll(
+				weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_10M)
+						.stream().map(WeatherDataMapper::fromHistoricalData).toList());
+		validData.addAll(
+				weatherDataService.retrieveHistoricalWeatherData(startDate, endDate, FluxQueryTemplate.HISTORICAL_1H)
+						.stream().map(WeatherDataMapper::fromHistoricalData).toList());
+		log.info("Alle Daten wurden erfolgreich extrahiert - Menge aller Datensätze: {}", validData.size());
 
-	    // 3. unvollständige Datensätze herausfiltern
-	    log.info("valid datasets before filter: " + collected.size());
-	    List<WxdbWeatherData> invalidData = new ArrayList<>();
-	    collected.removeIf(wd -> {
-	        if (wd == null || !WeatherDataValidator.isValid(wd)) {
-	            invalidData.add(wd); // invalidData ist z. B. eine separate List<WeatherData>
-	            return true; // Entferne dieses Element aus collected
-	        }
-	        return false; // Behalte das Element
-	    });
-	    
-	    log.info("valid datasets after filter: " + collected.size());
+		// 3. unvollständige Datensätze herausfiltern
+		log.info("Starte Ausfilterung von nicht validen Datensätzen");
+		removeInvalidDatasets(validData, invalidData, notImputableData, correctedDataMap);
+		log.info("Filterung abgeschlossen - Menge der vollkommenen Datensätze: {}", validData.size());
 
-	    // Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
-	    if (!invalidData.isEmpty()) {
-	        log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky)", invalidData.size());
+		log.debug("Schließe duplizierte Datensätze aus den validen InfluxDB-Datensätzen aus.");
+		// Fall von duplizierten InfluxDB-Daten existiert, da wir erst einmal alles
+		// ziehen 1h/10min und historisch und Echtzeit
+		validData = WeatherDataValidator.deduplicateAndImproveValidInfluxDbDatasets(validData);
+		log.info(
+				"Ausschließen von duplizierten InfluxDB-Datensätzen abgeschlossen - Menge der vollkommenen Datensätze: {}",
+				validData.size());
+		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
+		if (!invalidData.isEmpty() || !notImputableData.isEmpty()) {
+			log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky-DWD)",
+					invalidData.size() + notImputableData.size());
 
-	        // Bestimmen der Zeiträume für die fehlerhaften Zeiträume falls es mehrere Zeitraum lücken gibt.
-	        Set<LocalDateTime> invalidTimestamps = invalidData.stream()
-	                .map(WxdbWeatherData::getTime)
-	                .filter(Objects::nonNull)
-	                .collect(Collectors.toCollection(TreeSet::new));
+			// Bestimmen der Zeiträume für die fehlerhaften Zeiträume falls es mehrere
+			// Zeitraum lücken gibt.
+			Set<LocalDateTime> invalidTimestamps = correctedDataMap.keySet();
 
-	        // wenn es Lücken gibt welche zu lang sind z.B. 30 Stunden, dann werden verteilte Zeiträume erstellt (um die Schnittstelle nicht zu sehr auszulasten)
-	        List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange.groupToBroadRanges(
-	                new ArrayList<>(invalidTimestamps), 30);
+			// wenn es Lücken gibt welche zu lang sind z.B. 30 Stunden, dann werden
+			// verteilte Zeiträume erstellt (um die Schnittstelle nicht zu sehr auszulasten)
+			List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange
+					.groupToBroadRanges(new ArrayList<>(invalidTimestamps), 30);
 
-	        // Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
-	        List<DwdSourceData> stations = brightskyApiService.getDwdStations(null, null);
-	        List<Long> nearestStationIds = filterNearestSources(stations, 100).stream()
-	                .map(DwdSourceData::getId)
-	                .collect(Collectors.toList());
+			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
+			List<DwdSourceData> stations = brightskyApiService.getDwdStations(null, null);
+			stationIdToDistance = filterNearestSources(stations, 100).stream()
+					.collect(Collectors.toMap(DwdSourceData::getId, DwdSourceData::getDistance));
 
 			for (LocalDateTimeRange range : invalidRanges) {
-				// gesammter Zeitraum ist inkludiert d.h. 10-minuten Daten sind voll abrufbar und müssten ausreichen
-				boolean isRecent = range.getStartDate().isAfter(LocalDateTime.now().minusHours(31));
-				if (isRecent) {
-					BrightskySynopResponse synop = brightskyApiService.getDwdData10MinutesInterval(nearestStationIds);
-					collected.addAll(WeatherDataMapper.mapSynopDataList(synop.getWeather()));
-				} else {
-					// in diesem Fall werden Synop Daten nur beansprucht falls der Zeitraum sich mit unserem Zeitraum von 30h before und LocalDate.now() schneidet.
-					if (range.getEndDate().isAfter(LocalDateTime.now().minusHours(31))) {
-						BrightskySynopResponse synop = brightskyApiService.getDwdData10MinutesInterval(nearestStationIds);
-						collected.addAll(WeatherDataMapper.mapSynopDataList(synop.getWeather()).stream()
-								.filter(synopData -> WeatherDataValidator.isValid(synopData) 
-										&& WeatherDataValidator.isSynopDaterange(synopData)).collect(Collectors.toList()));
-					}
+				boolean endsWithinLast31h = range.getEndDate().isAfter(LocalDateTime.now().minusHours(31));
 
-					BrightskyApiSourceResponse hourly = brightskyApiService.getDwdWeatherDataHourlyInterval(
-							range.getStartDate().toLocalDate(), range.getEndDate().toLocalDate(), nearestStationIds);
-					collected.addAll(WeatherDataMapper.mapDwdWeatherDataList(hourly.getWeather()));
+				if (endsWithinLast31h) {
+					// In diesem Fall ist der Zeitraum ganz oder teilweise innerhalb der letzten 31
+					// Stunden - 10min Datensätze
+					BrightskySynopResponse synop = brightskyApiService
+							.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
+					dwdDatasets.addAll(extractValidSynopWeatherData(synop));
 				}
+
+				BrightskyApiSourceResponse hourly = brightskyApiService.getDwdWeatherDataHourlyInterval(
+						range.getStartDate().toLocalDate(), range.getEndDate().toLocalDate(),
+						new ArrayList<>(stationIdToDistance.keySet()));
+				// erhalte DWD-Stundendatensätze, filtere jedoch direkt die fehlerhaften
+				// Datensätze raus.
+				dwdDatasets.addAll(WeatherDataMapper.mapDwdWeatherDataList(hourly.getWeather()).stream()
+						.filter(vd -> WeatherDataValidator.isValid(vd)).collect(Collectors.toList()));
 			}
 		}
-	   
-	    // Bereinigen und verbessern
-	    List<WxdbWeatherData> result = WeatherDataValidator.deduplicateAndImprove(
-	            collected.stream().filter(r -> WeatherDataValidator.isValid(r)).toList());
-	    result.sort(Comparator.comparing(WxdbWeatherData::getTime));
 
-	    log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", result.size());
-	   
-	    // Es fehlt beim Import noch der Imputationsprouzess also das nicht nur die Stationen und Daten gezogen werden sondern
-	    // auch immer die Daten welche vollständig und von der Distanz am nahsten sind auch integriert werden, stand jetzt wird einfach der "beste Wert" genommen.
-	    // TODO: Integration in Zielsystem
-	    try {
-		    insertWxdbService.insertWeatherData(result);
+		log.debug("Es existieren {} komplett fehlerhafte Datensätze.", notImputableData.size());
+		// Bereinigen und verbessern der fehlerhaften Datensätze
+		validData.addAll(WeatherDataValidator.deduplicateAndCorrectInvalidData(invalidData, notImputableData,
+				new TreeSet<LocalDateTime>(correctedDataMap.keySet()), dwdDatasets, stationIdToDistance));
+		validData = WeatherDataValidator.deduplicateByTimestamp(validData);
 
-			insertWxdbService.completeProcessLog(processLog, true, result.size() + " Datensätze wurden erfolgreich importiert.");
-		    log.info("insert completed - datasets: {}", result.toString());
-	    } catch (RuntimeException e) {
-	    	insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + e.getStackTrace());
-	    	log.error("Wxdb Insert failed due to: ",e);
-	    }
-	    
+		// sortiere die Datensätze
+		validData.sort(Comparator.comparing(WxdbWeatherData::getTime));
+
+		// zusammenfügen der Imputationslogs
+		List<ImputationSummary> summaries = validData.stream().map(WxdbWeatherData::getZusammenfassung)
+				.filter(Objects::nonNull).collect(Collectors.toList());
+		for (ImputationSummary summary : summaries) {
+			for (ImputationLogPojo log : summary.getLogs()) {
+				log.setZusammenfassung(summary);
+			}
+		}
+		try {
+			// Insert Transaktion für die Datensätze
+			imputationSumRepo.saveAll(summaries);
+			insertWxdbService.insertWeatherData(validData);
+			insertWxdbService.completeProcessLog(processLog, true,
+					validData.size() + " Datensätze wurden erfolgreich importiert.");
+			log.info("insert completed - datasets: {}", validData.toString());
+		} catch (RuntimeException e) {
+			String shortMessage = e.getMessage();
+			if (shortMessage.length() > 1000) {
+				shortMessage = shortMessage.substring(0, 1000);
+			}
+
+			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+			log.error("Wxdb Insert failed due to: ", e);
+		}
+
+		log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", validData.size());
 	}
 
 	/**
@@ -249,4 +202,32 @@ public class WeatherImportProcess {
 		return nearestLocations;
 	}
 
+	private void removeInvalidDatasets(List<WxdbWeatherData> validData, List<WxdbWeatherData> invalidData,
+			List<WxdbWeatherData> notImputableData, Map<LocalDateTime, WxdbWeatherData> correctedDataMap) {
+		validData.removeIf(wd -> {
+			if (wd == null || !WeatherDataValidator.isValid(wd)) {
+				if (wd != null && wd.getTime() != null) {
+					// füge den Zeitstempel in die correctedDataMap.
+					correctedDataMap.putIfAbsent(wd.getTime(), null);
+					if (WeatherDataValidator.isNotImputable(wd)) {
+						// Liste der Datensätze die komplett überarbeitet werden müssen
+						notImputableData.add(wd);
+					} else {
+						// Liste der Datensätze die fehlerhaft sind und Imputiert werden müssen
+						invalidData.add(wd);
+					}
+					log.debug("Fehlerhafter Datensatz wurde ausgefiltert: {}", wd.toString());
+				}
+				return true;
+			}
+			return false;
+		});
+	}
+
+	private List<WxdbWeatherData> extractValidSynopWeatherData(BrightskySynopResponse synop) {
+		return WeatherDataMapper.mapSynopDataList(synop.getWeather()).stream()
+				.filter(synopData -> WeatherDataValidator.isValid(synopData)
+						&& WeatherDataValidator.isSynopDaterange(synopData))
+				.collect(Collectors.toList());
+	}
 }

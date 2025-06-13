@@ -2,13 +2,20 @@ package de.wxdb.wxdb_masterthesis.utils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.TreeSet;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
 import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
+import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
 
 /**
  * Class to validate Weatherdata.
@@ -16,6 +23,8 @@ import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
  * @author Kaan Mustafa Celik
  */
 public class WeatherDataValidator {
+
+	private static final Logger log = LoggerFactory.getLogger(WeatherDataValidator.class);
 
 	/**
 	 * Method to validate {@link WxdbWeatherData}.x
@@ -28,6 +37,11 @@ public class WeatherDataValidator {
 				&& data.getWindSpeed() != null && data.getWindDirection() != null;
 	}
 
+	public static boolean isNotImputable(WxdbWeatherData data) {
+		return data.getWindDirection() == null && data.getTemperature() == null && data.getGlobalRadiation() == null
+				&& data.getWindSpeed() == null;
+	}
+
 	public static boolean isSynopDaterange(WxdbWeatherData data) {
 		// possible NullPointer
 		if (data == null)
@@ -36,17 +50,18 @@ public class WeatherDataValidator {
 		return data.getTime() != null && data.getTime().isAfter(LocalDateTime.now().minusHours(31));
 	}
 
-	public static List<WxdbWeatherData> deduplicateAndImprove(List<WxdbWeatherData> inputList) {
+	public static List<WxdbWeatherData> deduplicateAndImproveValidInfluxDbDatasets(
+			List<WxdbWeatherData> validDatasets) {
 		Map<LocalDateTime, WxdbWeatherData> timeToBestEntry = new HashMap<>();
 
-		for (WxdbWeatherData data : inputList) {
+		for (WxdbWeatherData data : validDatasets) {
 			LocalDateTime time = data.getTime();
 			WxdbWeatherData existing = timeToBestEntry.get(time);
 
 			if (existing == null) {
 				timeToBestEntry.put(time, data);
 			} else {
-				WxdbWeatherData better = chooseBetter(existing, data);
+				WxdbWeatherData better = chooseBetterValidInfluxDbDataset(existing, data);
 				timeToBestEntry.put(time, better);
 			}
 		}
@@ -54,82 +69,168 @@ public class WeatherDataValidator {
 		return new ArrayList<>(timeToBestEntry.values());
 	}
 
-	private static WxdbWeatherData chooseBetter(WxdbWeatherData d1, WxdbWeatherData d2) {
-		// Realtime bevorzugen
+	/**
+	 * Logik zum priorisieren von InfluxDB Datensätze.
+	 * 
+	 * @param datasets
+	 * @return
+	 */
+	public static List<WxdbWeatherData> deduplicateByTimestamp(List<WxdbWeatherData> datasets) {
+		Map<LocalDateTime, WxdbWeatherData> timeToBestEntry = new HashMap<>();
+
+		for (WxdbWeatherData data : datasets) {
+			if (data == null || data.getTime() == null)
+				continue;
+
+			LocalDateTime time = data.getTime();
+			WxdbWeatherData existing = timeToBestEntry.get(time);
+
+			if (existing == null) {
+				timeToBestEntry.put(time, data);
+			} else {
+				// Bevorzuge Influx-Daten
+				boolean isExistingInflux = "InfluxDB".equalsIgnoreCase(existing.getDatasource());
+				boolean isCurrentInflux = "InfluxDB".equalsIgnoreCase(data.getDatasource());
+
+				if (!isExistingInflux && isCurrentInflux) {
+					timeToBestEntry.put(time, data); // überschreiben durch InfluxDB
+				}
+				// Wenn beide gleichwertig oder existierender ist Influx, behalte bestehenden
+			}
+		}
+
+		return new ArrayList<>(timeToBestEntry.values());
+	}
+
+	private static WxdbWeatherData chooseBetterValidInfluxDbDataset(WxdbWeatherData d1, WxdbWeatherData d2) {
+		WxdbWeatherData betterDataset = new WxdbWeatherData();
+		// Ziehe Realtime Data dem anderen vor, außer es sind beide Realtime oder beide
+		// nicht realtime
 		WxdbWeatherData primary = (d1.isRealtime() && !d2.isRealtime()) ? d1
 				: (!d1.isRealtime() && d2.isRealtime()) ? d2 : d1;
 		WxdbWeatherData secondary = (primary == d1) ? d2 : d1;
 
+		betterDataset = primary;
+		// bei validen InfluxDB-Datensätzen wird nur die GLobale Strahlung ausgebessert,
+		// da die anderen Variablen identisch sind.
+		if (primary.getGlobalRadiation() < secondary.getGlobalRadiation()) {
+			betterDataset.setGlobalRadiation(secondary.getGlobalRadiation());
+			betterDataset.setVersion(betterDataset.getVersion() + 1);
+		}
+
+		return betterDataset;
+	}
+
+	public static List<WxdbWeatherData> deduplicateAndCorrectInvalidData(List<WxdbWeatherData> invalidDatasets,
+			List<WxdbWeatherData> notImputableDatasets, TreeSet<LocalDateTime> invalidTimestamps,
+			List<WxdbWeatherData> dwdDatasets, Map<Long, Integer> stationIdAndDistance) {
+		List<WxdbWeatherData> correctedDatasets = new ArrayList<WxdbWeatherData>();
+
+		for (LocalDateTime invalidTimestamp : invalidTimestamps) {
+			Optional<WxdbWeatherData> invalidOptional = invalidDatasets.stream()
+					.filter(iD -> iD.getTime().equals(invalidTimestamp)).findFirst();
+			List<WxdbWeatherData> dwdDatasetsDay = dwdDatasets.stream()
+					.filter(dwd -> dwd.getTime().equals(invalidTimestamp))
+					.sorted(getDwdQualityComparator(stationIdAndDistance)).toList();
+			Optional<WxdbWeatherData> optionalDwd = dwdDatasetsDay.stream().findFirst();
+
+			if (invalidOptional.isPresent()) {
+				if (optionalDwd.isPresent()) {
+					correctedDatasets.add(imputeInvalidDataset(invalidOptional.get(), optionalDwd.get()));
+
+				} else {
+					log.warn("There is no Imputation possible for Dataset: " + invalidOptional.get());
+					continue;
+				}
+			} else {
+				if (optionalDwd.isPresent()) {
+					// in diesem Fall wird der gesammte DWD-Datensatz hinzugefügt. Echtzeitdaten und
+					// wenig Distanz haben vorrang.
+					correctedDatasets.add(optionalDwd.get());
+				} else {
+					log.warn("There is no Imputation possible for Dataset at time: " + invalidTimestamp);
+					continue;
+				}
+			}
+		}
+
+		return correctedDatasets;
+	}
+
+	private static Comparator<WxdbWeatherData> getDwdQualityComparator(Map<Long, Integer> stationIdAndDistance) {
+		return Comparator.comparing(WxdbWeatherData::isRealtime).reversed().thenComparing(d -> {
+			Integer distance = stationIdAndDistance.get(d.getStationSourceId());
+			return distance != null ? distance : Integer.MAX_VALUE;
+		});
+	}
+
+	/**
+	 * Imputation of missing values in the invalid dataset.
+	 * 
+	 * @param invalidDataset invalid Dataset
+	 * @param validDataset   valid Dataset
+	 * @return corrected Dataset
+	 */
+	private static WxdbWeatherData imputeInvalidDataset(WxdbWeatherData invalidDataset, WxdbWeatherData validDataset) {
+		ImputationSummary imputationSummary = new ImputationSummary();
+		List<ImputationLogPojo> logs = new ArrayList<ImputationLogPojo>();
+
 		WxdbWeatherData result = new WxdbWeatherData();
-		result.setTime(d1.getTime()); // Beide haben denselben Timestamp
+		result.setTime(invalidDataset.getTime());
+		result.setImputed(true);
 
-		// Globale Strahlung bevorzugt hohen positiven Wert
-		result.setGlobalRadiation(betterGlobalRadiation(d1.getGlobalRadiation(), d2.getGlobalRadiation()));
+		result.setDatasource(invalidDataset.getDatasource() + " / " + validDataset.getDatasource());
+		result.setWeatherStationSource(invalidDataset.getWeatherStationSource() + " Imputation durch Wetterstation: "
+				+ validDataset.getWeatherStationSource());
+		result.setStationSourceId(validDataset.getStationSourceId());
 
-		// Genauere Temperaturdaten bevorzugen
-		result.setTemperature(betterPrecision(d1.getTemperature(), d2.getTemperature()));
-		result.setWindSpeed(betterPrecision(d1.getWindSpeed(), d2.getWindSpeed()));
-		result.setWindDirection(betterPrecision(d1.getWindDirection(), d2.getWindDirection()));
+		if (invalidDataset.getGlobalRadiation() == null) {
 
-		// Metadaten vom bevorzugten (primary) Datensatz
-		/*
-		 * hier noch mal logik bzgl der metadaten implementieren. also ich muss
-		 * entwieder seperieren woher die einzelnen Daten kommen oder zusammenfügen
-		 */
-		result.setStationSourceId(
-				primary.getStationSourceId() != 0 ? primary.getStationSourceId() : secondary.getStationSourceId());
-		result.setDatasource(primary.getDatasource() != null ? primary.getDatasource() : secondary.getDatasource());
-		result.setWeatherStationSource(primary.getWeatherStationSource() != null ? primary.getWeatherStationSource()
-				: secondary.getWeatherStationSource());
+			result.setGlobalRadiation(null);
+			logs.add(prepareImputationLog("Globale Strahlung", validDataset.getGlobalRadiation(),
+					invalidDataset.getGlobalRadiation(), validDataset.getGlobalRadiation(), invalidDataset,
+					validDataset));
 
-		result.setRealtime(primary.isRealtime());
-		result.setLastChangedBy("SYSTEM");
-		result.setLastChangedTime(LocalDateTime.now());
-		result.setVersion(Math.max(d1.getVersion(), d2.getVersion()));
+		} else {
+			result.setGlobalRadiation(invalidDataset.getGlobalRadiation());
+		}
+
+		if (invalidDataset.getWindDirection() == null || invalidDataset.getWindSpeed() == null) {
+			result.setWindDirection(validDataset.getWindDirection());
+			result.setWindSpeed(validDataset.getWindSpeed());
+
+			logs.add(prepareImputationLog("Windrichtung", validDataset.getWindDirection(),
+					invalidDataset.getWindDirection(), validDataset.getWindDirection(), invalidDataset, validDataset));
+			logs.add(prepareImputationLog("Windgeschwindigkeit", validDataset.getWindSpeed(),
+					invalidDataset.getWindSpeed(), validDataset.getWindSpeed(), invalidDataset, validDataset));
+
+		} else {
+			result.setWindDirection(invalidDataset.getWindDirection());
+			result.setWindSpeed(invalidDataset.getWindSpeed());
+		}
+
+		if (invalidDataset.getTemperature() == null
+				|| (invalidDataset.getTemperature() < -90.0 && invalidDataset.getTemperature() > 60.0)) {
+			result.setTemperature(validDataset.getTemperature());
+
+			logs.add(prepareImputationLog("Temperature", validDataset.getTemperature(), invalidDataset.getTemperature(),
+					validDataset.getTemperature(), invalidDataset, validDataset));
+		} else {
+			result.setTemperature(invalidDataset.getTemperature());
+		}
+
+		imputationSummary.setLogs(logs);
+		imputationSummary.setCreatedAt(LocalDateTime.now());
+		imputationSummary.setTriggeredBy("WeatherDataValidator.imputeInvalidDataset()");
+		imputationSummary.setInformation(logs.size() + " Werte imputiert.");
+		result.setVersion(invalidDataset.getVersion() + logs.size());
+		result.setZusammenfassung(imputationSummary);
 
 		return result;
 	}
 
-	private static Double betterGlobalRadiation(Double g1, Double g2) {
-		Double v1 = (g1 != null && g1 >= 0) ? g1 : null;
-		Double v2 = (g2 != null && g2 >= 0) ? g2 : null;
-
-		if (v1 == null)
-			return v2;
-		if (v2 == null)
-			return v1;
-
-		return v1 > v2 ? v1 : v2;
-	}
-
-	private static Double betterPrecision(Double d1, Double d2) {
-		if (isInvalid(d1) && isValid(d2))
-			return d2;
-		if (isInvalid(d2) && isValid(d1))
-			return d1;
-		if (isValid(d1) && isValid(d2)) {
-			int precision1 = getDecimalPrecision(d1);
-			int precision2 = getDecimalPrecision(d2);
-			return precision2 > precision1 ? d2 : d1;
-		}
-		return null;
-	}
-
-	private static int getDecimalPrecision(Double d) {
-		String[] parts = d.toString().split("\\.");
-		return (parts.length == 2) ? parts[1].length() : 0;
-	}
-
-	private static boolean isValid(Double d) {
-		return d != null && d != 0.0;
-	}
-
-	private static boolean isInvalid(Double d) {
-		return !isValid(d);
-	}
-
 	private static ImputationLogPojo prepareImputationLog(String field, Double value, Double valueA, Double valueB,
-			WxdbWeatherData a, WxdbWeatherData b, String reason) {
+			WxdbWeatherData a, WxdbWeatherData b) {
 		WxdbWeatherData chosen = (Objects.equals(value, valueA)) ? a : b;
 		ImputationLogPojo log = new ImputationLogPojo();
 		log.setWertName(field);

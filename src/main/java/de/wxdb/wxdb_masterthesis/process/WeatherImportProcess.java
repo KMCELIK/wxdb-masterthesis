@@ -24,6 +24,7 @@ import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
 import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
 import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
+import de.wxdb.wxdb_masterthesis.schema.NotificationPojo;
 import de.wxdb.wxdb_masterthesis.schema.Processlog;
 import de.wxdb.wxdb_masterthesis.service.BrightskyApiService;
 import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
@@ -105,11 +106,9 @@ public class WeatherImportProcess {
 		log.info("Filterung abgeschlossen - Menge der vollkommenen Datensätze: {}", validData.size());
 
 		log.debug("Schließe duplizierte Datensätze aus den validen InfluxDB-Datensätzen aus.");
-		// Fall von duplizierten InfluxDB-Daten existiert, da wir erst einmal alles
-		// ziehen 1h/10min und historisch und Echtzeit
+		// Fall von duplizierten InfluxDB-Daten existiert, da wir erst einmal alles ziehen 1h/10min und historisch und Echtzeit
 		validData = WeatherDataValidator.deduplicateAndImproveValidInfluxDbDatasets(validData);
-		log.info(
-				"Ausschließen von duplizierten InfluxDB-Datensätzen abgeschlossen - Menge der vollkommenen Datensätze: {}",
+		log.info("Ausschließen von duplizierten InfluxDB-Datensätzen abgeschlossen - Menge der vollkommenen Datensätze: {}",
 				validData.size());
 		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
 		if (!invalidData.isEmpty() || !notImputableData.isEmpty()) {
@@ -160,6 +159,9 @@ public class WeatherImportProcess {
 		// sortiere die Datensätze
 		validData.sort(Comparator.comparing(WxdbWeatherData::getTime));
 
+		// filtere Duplikate welche sich schon auf der Datenbank befinden.
+		List<NotificationPojo> notifications = insertWxdbService.filterDuplicates(validData, startDate, endDate);
+		
 		// zusammenfügen der Imputationslogs
 		List<ImputationSummary> summaries = validData.stream().map(WxdbWeatherData::getZusammenfassung)
 				.filter(Objects::nonNull).collect(Collectors.toList());
@@ -174,6 +176,7 @@ public class WeatherImportProcess {
 			insertWxdbService.insertWeatherData(validData);
 			insertWxdbService.completeProcessLog(processLog, true,
 					validData.size() + " Datensätze wurden erfolgreich importiert.");
+			insertWxdbService.insertNotifications(notifications);
 			log.info("insert completed - datasets: {}", validData.toString());
 		} catch (RuntimeException e) {
 			String shortMessage = e.getMessage();
@@ -186,6 +189,96 @@ public class WeatherImportProcess {
 		}
 
 		log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", validData.size());
+	}
+	
+	/**
+	 * Importierungsprozess ausschließlich für Echtzeitdaten.
+	 */
+	public void importRealtimeWeatherData() {
+		// Datenbank logeintrag
+		Processlog processLog = insertWxdbService.startProcessLog("IMPORT-Realtime-Weatherdata", LocalDateTime.now());
+		LocalDateTime startDate = LocalDateTime.now().minusHours(30);
+		// initialisierung der Listen und Maps
+		List<WxdbWeatherData> validData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> invalidData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> notImputableData = new ArrayList<WxdbWeatherData>();
+		List<WxdbWeatherData> dwdDatasets = new ArrayList<WxdbWeatherData>();
+
+		Map<Long, Integer> stationIdToDistance = new HashMap<Long, Integer>();
+		Map<LocalDateTime, WxdbWeatherData> correctedDataMap = new HashMap<>();
+
+		// 1. Realtime Daten (sofern Zeitraum gültig) - InfluxDB
+		log.info("Erhalte Echtzeitdaten aus der InfluxDB-Datenbank");
+		validData.addAll(weatherDataService.retrieveRTWeatherData(startDate.toLocalDate(), FluxQueryTemplate.REALTIME_10M)
+						.stream().map(WeatherDataMapper::fromRealtimeData).toList());
+		log.debug("Echtzeitdaten wurden extrahiert - Menge der extrahierten Datensätze: {}", validData.size());
+
+		// 2. unvollständige Datensätze herausfiltern
+		log.info("Starte Ausfilterung von nicht validen Datensätzen");
+		removeInvalidDatasets(validData, invalidData, notImputableData, correctedDataMap);
+		log.info("Filterung abgeschlossen - Menge der vollkommenen Datensätze: {}", validData.size());
+
+		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
+		if (!invalidData.isEmpty() || !notImputableData.isEmpty()) {
+			log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky-DWD)",
+					invalidData.size() + notImputableData.size());
+			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
+			List<DwdSourceData> stations = brightskyApiService.getDwdStations(null, null);
+			stationIdToDistance = filterNearestSources(stations, 100).stream()
+					.collect(Collectors.toMap(DwdSourceData::getId, DwdSourceData::getDistance));
+
+					BrightskySynopResponse synop = brightskyApiService
+							.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
+					dwdDatasets.addAll(extractValidSynopWeatherData(synop));
+
+		}
+
+		log.debug("Es existieren {} komplett fehlerhafte Datensätze.", notImputableData.size());
+		// Bereinigen und verbessern der fehlerhaften Datensätze
+		validData.addAll(WeatherDataValidator.deduplicateAndCorrectInvalidData(invalidData, notImputableData,
+				new TreeSet<LocalDateTime>(correctedDataMap.keySet()), dwdDatasets, stationIdToDistance));
+		validData = WeatherDataValidator.deduplicateByTimestamp(validData);
+
+		// sortiere die Datensätze
+		validData.sort(Comparator.comparing(WxdbWeatherData::getTime));
+		
+		// filtere Duplikate welche sich schon auf der Datenbank befinden.
+		List<NotificationPojo> notifications = insertWxdbService.filterDuplicates(validData, startDate.toLocalDate(), LocalDate.now());
+		
+		// zusammenfügen der Imputationslogs
+		List<ImputationSummary> summaries = validData.stream().map(WxdbWeatherData::getZusammenfassung)
+				.filter(Objects::nonNull).collect(Collectors.toList());
+		for (ImputationSummary summary : summaries) {
+			for (ImputationLogPojo log : summary.getLogs()) {
+				log.setZusammenfassung(summary);
+			}
+		}
+		
+		try {
+			// Insert Transaktion für die Datensätze
+			imputationSumRepo.saveAll(summaries);
+			insertWxdbService.insertWeatherData(validData);
+			insertWxdbService.completeProcessLog(processLog, true,
+					validData.size() + " Datensätze wurden erfolgreich importiert.");
+			insertWxdbService.insertNotifications(notifications);
+			log.info("insert completed - datasets: {}", validData.toString());
+		} catch (RuntimeException e) {
+			String shortMessage = e.getMessage();
+			if (shortMessage.length() > 1000) {
+				shortMessage = shortMessage.substring(0, 1000);
+			}
+
+			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+			log.error("Wxdb Insert failed due to: ", e);
+		}
+
+		log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", validData.size());
+		
+	}
+	
+	
+	public void importCsv() {
+		// Methode für manuellen CSV Import
 	}
 
 	/**

@@ -125,7 +125,7 @@ public class WeatherDataValidator {
 			List<WxdbWeatherData> notImputableDatasets, TreeSet<LocalDateTime> invalidTimestamps,
 			List<WxdbWeatherData> dwdDatasets, Map<Long, Integer> stationIdAndDistance) {
 		List<WxdbWeatherData> correctedDatasets = new ArrayList<WxdbWeatherData>();
-
+		
 		for (LocalDateTime invalidTimestamp : invalidTimestamps) {
 			Optional<WxdbWeatherData> invalidOptional = invalidDatasets.stream()
 					.filter(iD -> iD.getTime().equals(invalidTimestamp)).findFirst();
@@ -178,7 +178,6 @@ public class WeatherDataValidator {
 		WxdbWeatherData result = new WxdbWeatherData();
 		result.setTime(invalidDataset.getTime());
 		result.setImputed(true);
-
 		result.setDatasource(invalidDataset.getDatasource() + " / " + validDataset.getDatasource());
 		result.setWeatherStationSource(invalidDataset.getWeatherStationSource() + " Imputation durch Wetterstation: "
 				+ validDataset.getWeatherStationSource());
@@ -224,6 +223,7 @@ public class WeatherDataValidator {
 		imputationSummary.setTriggeredBy("WeatherDataValidator.imputeInvalidDataset()");
 		imputationSummary.setInformation(logs.size() + " Werte imputiert.");
 		result.setVersion(invalidDataset.getVersion() + logs.size());
+		result.setLastChangedTime(LocalDateTime.now());
 		result.setZusammenfassung(imputationSummary);
 
 		return result;

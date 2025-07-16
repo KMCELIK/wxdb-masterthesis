@@ -24,7 +24,7 @@ public class ImputationSummary {
 
 	private LocalDateTime createdAt = LocalDateTime.now();
 
-	private String triggeredBy;
+	private String triggeredBy = "SYSTEM";
 
 	@Lob
 	private String information;

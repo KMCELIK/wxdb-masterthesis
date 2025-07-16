@@ -8,7 +8,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update  # Oder 'validate' oder 'none' je nach Phase
-    show-sql: true
+    show-sql: false
     open-in-view: false
 
   sql:

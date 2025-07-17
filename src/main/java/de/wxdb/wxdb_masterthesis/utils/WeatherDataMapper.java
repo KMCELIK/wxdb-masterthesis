@@ -1,10 +1,13 @@
 package de.wxdb.wxdb_masterthesis.utils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import de.wxdb.wxdb_masterthesis.dto.CsvWeatherDataRaw;
 import de.wxdb.wxdb_masterthesis.dto.DwdHourlyWeatherData;
 import de.wxdb.wxdb_masterthesis.dto.DwdSynopWeatherData;
 import de.wxdb.wxdb_masterthesis.dto.WeatherHistoricalData;
@@ -23,6 +26,7 @@ import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
  */
 public class WeatherDataMapper {
 	private static final String DEFAULT_INFLUXDB_SOURCE = "InfluxDB";
+	private static final String MANUAL_CSV_IMPORT = "CSV-Import";
 	private static final String DEFAULT_INFLUXDB_STATION = "FH-Dortmund";
 	private static final DateTimeFormatter formatter = DateTimeFormatter.ISO_DATE_TIME;
 
@@ -43,6 +47,40 @@ public class WeatherDataMapper {
 		data.setDatasource(DEFAULT_INFLUXDB_SOURCE);
 		data.setWeatherStationSource(DEFAULT_INFLUXDB_STATION);
 		data.setLastChangedBy("SYSTEM");
+		data.setLastChangedTime(LocalDateTime.now());
+		data.setRealtime(true);
+		data.setVersion(0);
+
+		return data;
+	}
+	
+	/**
+	 * Method to map from {@link WeatherRealtimeData}.
+	 * 
+	 * @param realtimeData real time data.
+	 * @return WxdbWeatherData.
+	 */
+	public static WxdbWeatherData fromCsvWeatherData(CsvWeatherDataRaw csvWeatherData, String weatherStationName) {
+		WxdbWeatherData data = new WxdbWeatherData();
+		
+	    // Zeitstempel setzen (Datum + Uhrzeit)
+	    try {
+	        LocalDate date = LocalDate.parse(csvWeatherData.getDatum(), DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+	        LocalTime time = LocalTime.parse(csvWeatherData.getZeit(), DateTimeFormatter.ofPattern("HH:mm:ss"));
+	        data.setTime(LocalDateTime.of(date, time));
+	    } catch (Exception e) {
+	        throw new RuntimeException("Fehler beim Parsen von Datum/Zeit: " + csvWeatherData.getDatum() + " " + csvWeatherData.getZeit(), e);
+	    }
+
+	    // Wetterdaten setzen (Komma → Punkt)
+	    data.setTemperature(parse(csvWeatherData.getTemperatur()));
+	    data.setWindSpeed(parse(csvWeatherData.getWindSpeed()));
+	    data.setWindDirection(parse(csvWeatherData.getWindDirection()));
+	    data.setGlobalRadiation(parse(csvWeatherData.getGlobalstrahlung()));
+		
+		data.setDatasource(MANUAL_CSV_IMPORT);
+		data.setWeatherStationSource(weatherStationName);
+		data.setLastChangedBy("MANUAL-IMPORT");
 		data.setLastChangedTime(LocalDateTime.now());
 		data.setRealtime(true);
 		data.setVersion(0);
@@ -76,6 +114,10 @@ public class WeatherDataMapper {
 
 	public static List<WxdbWeatherData> mapSynopDataList(List<DwdSynopWeatherData> dwdList) {
 		return dwdList.stream().map(WeatherDataMapper::mapSingle).collect(Collectors.toList());
+	}
+	
+	public static List<WxdbWeatherData> mapCsvWeatherDataList(List<CsvWeatherDataRaw> csvWeatherList, String weatherStationName) {
+		return csvWeatherList.stream().map(cwd -> WeatherDataMapper.fromCsvWeatherData(cwd, weatherStationName)).collect(Collectors.toList());
 	}
 
 	public static WxdbWeatherData mapSingle(DwdSynopWeatherData dwd) {
@@ -149,5 +191,15 @@ public class WeatherDataMapper {
 		wxdb.setRealtime(false);
 
 		return wxdb;
+	}
+	
+	// Hilfsmethode für Komma-Dezimalzahlen
+	private static Double parse(String input) {
+	    if (input == null || input.isBlank()) return null;
+	    try {
+	        return Double.parseDouble(input.replace(",", "."));
+	    } catch (NumberFormatException e) {
+	        return null;
+	    }
 	}
 }

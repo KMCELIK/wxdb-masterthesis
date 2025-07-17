@@ -16,7 +16,7 @@ import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
  */
 public interface WxdbWeatherDataJpa extends JpaRepository<WxdbWeatherData, Long> {
 
-	@Query("SELECT w.time FROM WxdbWeatherData w WHERE w.time BETWEEN :start AND :end")
+	@Query("SELECT w.time FROM WxdbWeatherData w WHERE w.lastChangedBy != 'MANUELL' AND w.time BETWEEN :start AND :end")
 	List<LocalDateTime> findExistingTimestamps(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
 }

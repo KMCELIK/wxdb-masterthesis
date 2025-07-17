@@ -4,7 +4,10 @@ spring:
     username: root # hier username von der Datenbank eintragen z.B. root
     password: root # hier password eintragen
     driver-class-name: com.mysql.cj.jdbc.Driver
-
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB		
   jpa:
     hibernate:
       ddl-auto: update  # Oder 'validate' oder 'none' je nach Phase

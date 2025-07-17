@@ -1,5 +1,9 @@
 package de.wxdb.wxdb_masterthesis.process;
 
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -16,10 +20,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.fasterxml.jackson.databind.MappingIterator;
+import com.fasterxml.jackson.dataformat.csv.CsvMapper;
+import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 
 import de.wxdb.wxdb_masterthesis.db.ImputationSummaryRepository;
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
+import de.wxdb.wxdb_masterthesis.dto.CsvWeatherDataRaw;
 import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
 import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
@@ -106,9 +116,11 @@ public class WeatherImportProcess {
 		log.info("Filterung abgeschlossen - Menge der vollkommenen Datensätze: {}", validData.size());
 
 		log.debug("Schließe duplizierte Datensätze aus den validen InfluxDB-Datensätzen aus.");
-		// Fall von duplizierten InfluxDB-Daten existiert, da wir erst einmal alles ziehen 1h/10min und historisch und Echtzeit
+		// Fall von duplizierten InfluxDB-Daten existiert, da wir erst einmal alles
+		// ziehen 1h/10min und historisch und Echtzeit
 		validData = WeatherDataValidator.deduplicateAndImproveValidInfluxDbDatasets(validData);
-		log.info("Ausschließen von duplizierten InfluxDB-Datensätzen abgeschlossen - Menge der vollkommenen Datensätze: {}",
+		log.info(
+				"Ausschließen von duplizierten InfluxDB-Datensätzen abgeschlossen - Menge der vollkommenen Datensätze: {}",
 				validData.size());
 		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
 		if (!invalidData.isEmpty() || !notImputableData.isEmpty()) {
@@ -161,7 +173,7 @@ public class WeatherImportProcess {
 
 		// filtere Duplikate welche sich schon auf der Datenbank befinden.
 		List<NotificationPojo> notifications = insertWxdbService.filterDuplicates(validData, startDate, endDate);
-		
+
 		// zusammenfügen der Imputationslogs
 		List<ImputationSummary> summaries = validData.stream().map(WxdbWeatherData::getZusammenfassung)
 				.filter(Objects::nonNull).collect(Collectors.toList());
@@ -190,7 +202,7 @@ public class WeatherImportProcess {
 
 		log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", validData.size());
 	}
-	
+
 	/**
 	 * Importierungsprozess ausschließlich für Echtzeitdaten.
 	 */
@@ -209,7 +221,8 @@ public class WeatherImportProcess {
 
 		// 1. Realtime Daten (sofern Zeitraum gültig) - InfluxDB
 		log.info("Erhalte Echtzeitdaten aus der InfluxDB-Datenbank");
-		validData.addAll(weatherDataService.retrieveRTWeatherData(startDate.toLocalDate(), FluxQueryTemplate.REALTIME_10M)
+		validData.addAll(
+				weatherDataService.retrieveRTWeatherData(startDate.toLocalDate(), FluxQueryTemplate.REALTIME_10M)
 						.stream().map(WeatherDataMapper::fromRealtimeData).toList());
 		log.debug("Echtzeitdaten wurden extrahiert - Menge der extrahierten Datensätze: {}", validData.size());
 
@@ -227,9 +240,9 @@ public class WeatherImportProcess {
 			stationIdToDistance = filterNearestSources(stations, 100).stream()
 					.collect(Collectors.toMap(DwdSourceData::getId, DwdSourceData::getDistance));
 
-					BrightskySynopResponse synop = brightskyApiService
-							.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
-					dwdDatasets.addAll(extractValidSynopWeatherData(synop));
+			BrightskySynopResponse synop = brightskyApiService
+					.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
+			dwdDatasets.addAll(extractValidSynopWeatherData(synop));
 
 		}
 
@@ -241,10 +254,11 @@ public class WeatherImportProcess {
 
 		// sortiere die Datensätze
 		validData.sort(Comparator.comparing(WxdbWeatherData::getTime));
-		
+
 		// filtere Duplikate welche sich schon auf der Datenbank befinden.
-		List<NotificationPojo> notifications = insertWxdbService.filterDuplicates(validData, startDate.toLocalDate(), LocalDate.now());
-		
+		List<NotificationPojo> notifications = insertWxdbService.filterDuplicates(validData, startDate.toLocalDate(),
+				LocalDate.now());
+
 		// zusammenfügen der Imputationslogs
 		List<ImputationSummary> summaries = validData.stream().map(WxdbWeatherData::getZusammenfassung)
 				.filter(Objects::nonNull).collect(Collectors.toList());
@@ -253,7 +267,7 @@ public class WeatherImportProcess {
 				log.setZusammenfassung(summary);
 			}
 		}
-		
+
 		try {
 			// Insert Transaktion für die Datensätze
 			imputationSumRepo.saveAll(summaries);
@@ -273,12 +287,30 @@ public class WeatherImportProcess {
 		}
 
 		log.info("Import abgeschlossen. {} Datensätze nach Kompensation generiert.", validData.size());
-		
+
 	}
-	
-	
-	public void importCsv() {
-		// Methode für manuellen CSV Import
+
+	public void importCsv(MultipartFile csvFile, String weatherStation) {
+		// 1. Lese die CSV-Datei
+		Processlog processLog = insertWxdbService.startProcessLog("MANUAL-CSV-IMPORT", LocalDateTime.now());
+		List<CsvWeatherDataRaw> csvDatasets = readCsv(csvFile);
+
+		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
+		List<WxdbWeatherData> wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+
+		// 3. Inserte die Wxdb Wetterdaten in unsere Datenbank
+		try {
+			insertWxdbService.insertWeatherData(wxdbCsvWeatherData);
+			insertWxdbService.completeProcessLog(processLog, true,
+					wxdbCsvWeatherData.size() + " Datensätze wurden erfolgreich importiert.");
+		} catch (RuntimeException e) {
+			String shortMessage = e.getMessage();
+			if (shortMessage.length() > 1000) {
+				shortMessage = shortMessage.substring(0, 1000);
+			}
+
+			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+		}
 	}
 
 	/**
@@ -322,5 +354,18 @@ public class WeatherImportProcess {
 				.filter(synopData -> WeatherDataValidator.isValid(synopData)
 						&& WeatherDataValidator.isSynopDaterange(synopData))
 				.collect(Collectors.toList());
+	}
+
+	private List<CsvWeatherDataRaw> readCsv(MultipartFile csvFile) {
+		CsvMapper mapper = new CsvMapper();
+		CsvSchema schema = CsvSchema.emptySchema().withHeader().withColumnSeparator(';');
+
+		try (Reader reader = new InputStreamReader(csvFile.getInputStream(), StandardCharsets.UTF_8)) {
+			MappingIterator<CsvWeatherDataRaw> iterator = mapper.readerFor(CsvWeatherDataRaw.class).with(schema)
+					.readValues(reader);
+			return iterator.readAll();
+		} catch (IOException e) {
+			throw new RuntimeException("Fehler beim Lesen der CSV-Datei mit Jackson", e);
+		}
 	}
 }

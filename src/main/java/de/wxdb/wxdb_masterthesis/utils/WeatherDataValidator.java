@@ -220,7 +220,7 @@ public class WeatherDataValidator {
 
 		imputationSummary.setLogs(logs);
 		imputationSummary.setCreatedAt(LocalDateTime.now());
-		imputationSummary.setTriggeredBy("WeatherDataValidator.imputeInvalidDataset()");
+		imputationSummary.setTriggeredBy("SYSTEM");
 		imputationSummary.setInformation(logs.size() + " Werte imputiert.");
 		result.setVersion(invalidDataset.getVersion() + logs.size());
 		result.setLastChangedTime(LocalDateTime.now());

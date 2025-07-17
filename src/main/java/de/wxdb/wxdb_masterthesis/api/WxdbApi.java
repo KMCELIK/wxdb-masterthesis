@@ -35,5 +35,13 @@ public interface WxdbApi {
 	 */
 	@PostMapping("/import/initialize")
 	WxdbApiResponse triggerInitialImport();
+	
+	/**
+	 * Triggers the daily Import which imports the realtime weather data of the last 30 hours.
+	 * 
+	 * @return {@link WxdbApiResponse}
+	 */
+	@PostMapping("/import/daily")
+	WxdbApiResponse triggerDailyImport();
 
 }

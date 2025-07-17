@@ -53,5 +53,24 @@ public class WxdbApiDelegate implements WxdbApi {
 
 		return response;
 	}
+	
+	@Override
+	public WxdbApiResponse triggerDailyImport() {
+		LocalDate startDate = LocalDate.of(LocalDate.now().getYear(), 1, 1);
+		LocalDate endDate = LocalDate.now();
+		LOGGER.debug("Start initial import from date {} till {}", startDate, endDate);
+
+		WxdbApiResponse response = null;
+
+		try {
+			importProcess.importRealtimeWeatherData();
+			response = new WxdbApiResponse();
+		} catch (RuntimeException e) {
+			LOGGER.error("Error while triggering initial import", e);
+			response = new WxdbApiResponse(e, "ERROR", "Error while triggering initial import.");
+		}
+
+		return response;
+	}
 
 }

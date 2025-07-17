@@ -17,3 +17,7 @@ spring:
   sql:
     init:
       mode: always
+
+wxdb:
+  import:
+    cron: "0 0 1 * * ?"  # Uhrzeit für den Quartz-Job in Form einer CRON-Expression

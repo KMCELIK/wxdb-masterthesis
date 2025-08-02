@@ -209,7 +209,7 @@ public class WeatherImportProcess {
 	public void importRealtimeWeatherData() {
 		// Datenbank logeintrag
 		Processlog processLog = insertWxdbService.startProcessLog("IMPORT-Realtime-Weatherdata", LocalDateTime.now());
-		LocalDateTime startDate = LocalDateTime.now().minusHours(30);
+		LocalDateTime startDate = LocalDateTime.now().minusHours(24); // get the data of 1 day before, not 2 days before.
 		// initialisierung der Listen und Maps
 		List<WxdbWeatherData> validData = new ArrayList<WxdbWeatherData>();
 		List<WxdbWeatherData> invalidData = new ArrayList<WxdbWeatherData>();
@@ -231,8 +231,8 @@ public class WeatherImportProcess {
 		removeInvalidDatasets(validData, invalidData, notImputableData, correctedDataMap);
 		log.info("Filterung abgeschlossen - Menge der vollkommenen Datensätze: {}", validData.size());
 
-		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB
-		if (!invalidData.isEmpty() || !notImputableData.isEmpty()) {
+		// Analyse der fehlerhaften Datensätze falls vorhanden - InfluxDB - falls keine Daten bezogen wurden ebenfalls ziehen
+		if (!invalidData.isEmpty() || !notImputableData.isEmpty() || validData.isEmpty()) {
 			log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky-DWD)",
 					invalidData.size() + notImputableData.size());
 			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km

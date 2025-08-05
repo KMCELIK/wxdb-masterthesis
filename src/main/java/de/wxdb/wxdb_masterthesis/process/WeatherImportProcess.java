@@ -242,8 +242,13 @@ public class WeatherImportProcess {
 
 			BrightskySynopResponse synop = brightskyApiService
 					.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
-			dwdDatasets.addAll(extractValidSynopWeatherData(synop));
 
+			// keine InfluxDB Daten, somit keine Zeitstempel
+			if (validData.isEmpty()) {
+				validData.addAll(extractValidSynopWeatherData(synop));
+			} else {
+				dwdDatasets.addAll(extractValidSynopWeatherData(synop));
+			}
 		}
 
 		log.debug("Es existieren {} komplett fehlerhafte Datensätze.", notImputableData.size());

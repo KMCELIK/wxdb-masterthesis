@@ -226,6 +226,12 @@ public class WeatherImportProcess {
 						.stream().map(WeatherDataMapper::fromRealtimeData).toList());
 		log.debug("Echtzeitdaten wurden extrahiert - Menge der extrahierten Datensätze: {}", validData.size());
 
+		// falls keine Echtzeitdaten vorhanden sind ziehe historische daten aus der InfluxDB.
+		if (validData.isEmpty()) {
+			validData.addAll(weatherDataService.retrieveHistoricalWeatherData(startDate.toLocalDate(), LocalDate.now(), 
+					FluxQueryTemplate.HISTORICAL_10M).stream().map(WeatherDataMapper::fromHistoricalData).toList());
+		}
+		
 		// 2. unvollständige Datensätze herausfiltern
 		log.info("Starte Ausfilterung von nicht validen Datensätzen");
 		removeInvalidDatasets(validData, invalidData, notImputableData, correctedDataMap);

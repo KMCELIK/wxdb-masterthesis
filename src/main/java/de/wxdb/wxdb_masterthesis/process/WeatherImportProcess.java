@@ -1,6 +1,7 @@
 package de.wxdb.wxdb_masterthesis.process;
 
-import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -373,15 +374,37 @@ public class WeatherImportProcess {
 	}
 
 	private List<CsvWeatherDataRaw> readCsv(MultipartFile csvFile) {
-		CsvMapper mapper = new CsvMapper();
-		CsvSchema schema = CsvSchema.emptySchema().withHeader().withColumnSeparator(';');
+	    CsvMapper mapper = CsvMapper.builder()
+	        .enable(com.fasterxml.jackson.dataformat.csv.CsvParser.Feature.TRIM_SPACES)
+	        .build();
 
-		try (Reader reader = new InputStreamReader(csvFile.getInputStream(), StandardCharsets.UTF_8)) {
-			MappingIterator<CsvWeatherDataRaw> iterator = mapper.readerFor(CsvWeatherDataRaw.class).with(schema)
-					.readValues(reader);
-			return iterator.readAll();
-		} catch (IOException e) {
-			throw new RuntimeException("Fehler beim Lesen der CSV-Datei mit Jackson", e);
-		}
+	    // Unbekannte Eigenschaften tolerieren (zusätzlich zur POJO-Annotation)
+	    mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+	    CsvSchema schema = CsvSchema.emptySchema()
+	        .withHeader()
+	        .withColumnSeparator(';');
+
+	    try (InputStream in = csvFile.getInputStream();
+	         Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
+	         BufferedReader br = new BufferedReader(reader)) {
+
+	        // Header zu Debug-Zwecken einmal loggen
+	        br.mark(8192);
+	        String header = br.readLine();
+	        log.info("CSV-Header: {}", header);
+	        br.reset();
+
+	        MappingIterator<CsvWeatherDataRaw> it = mapper
+	            .readerFor(CsvWeatherDataRaw.class)
+	            .with(schema)
+	            .readValues(br);
+
+	        return it.readAll();
+
+	    } catch (Exception e) { // nicht nur IOException
+	    	log.error("Error occured while reading CSV: ", e);
+	        throw new RuntimeException("Fehler beim Lesen/Deserialisieren der CSV-Datei", e);
+	    }
 	}
 }

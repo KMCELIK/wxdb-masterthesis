@@ -304,17 +304,35 @@ public class WeatherImportProcess {
 
 	public void importCsv(MultipartFile csvFile, String weatherStation) {
 		// 1. Lese die CSV-Datei
+		log.info("Reading CSV-File from " + weatherStation);
 		Processlog processLog = insertWxdbService.startProcessLog("MANUAL-CSV-IMPORT", LocalDateTime.now());
-		List<CsvWeatherDataRaw> csvDatasets = readCsv(csvFile);
+		
+		List<CsvWeatherDataRaw> csvDatasets = new ArrayList<CsvWeatherDataRaw>();
+		
+		try {
+			csvDatasets = readCsv(csvFile);
+		} catch (RuntimeException e) {
+			log.error("Error occured in reading the csv-file", e);
+			String shortMessage = e.getMessage();
+			if (shortMessage.length() > 1000) {
+				shortMessage = shortMessage.substring(0, 1000);
+			}
+
+			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+
+		}
+		log.info("Finished Mapping CSV File to csv-datasets");
 
 		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
 		List<WxdbWeatherData> wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+		log.info("Finished mapping csv file to wxdb-weatherdatasets");
 		
 		// filtere fehlerhafte Datensätze aus
 		wxdbCsvWeatherData = wxdbCsvWeatherData.stream()
 				.filter(wd -> (WeatherDataValidator.isValid(wd) && WeatherDataValidator.isAllDataValid(wd)))
 				.collect(Collectors.toList());
-
+		log.info("Filtered all invalid datasets out, start inserting weatherData");
+		
 		// 3. Inserte die Wxdb Wetterdaten in unsere Datenbank
 		try {
 			insertWxdbService.insertWeatherData(wxdbCsvWeatherData);
@@ -403,7 +421,7 @@ public class WeatherImportProcess {
 	        return it.readAll();
 
 	    } catch (Exception e) { // nicht nur IOException
-	    	log.info("Error occured while reading CSV: ", e);
+	    	log.error("Error occured while reading CSV: ", e);
 	        throw new RuntimeException("Fehler beim Lesen/Deserialisieren der CSV-Datei", e);
 	    }
 	}

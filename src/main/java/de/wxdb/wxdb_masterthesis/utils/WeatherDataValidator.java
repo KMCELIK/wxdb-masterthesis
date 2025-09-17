@@ -36,6 +36,13 @@ public class WeatherDataValidator {
 		return data != null && data.getTemperature() != null && data.getGlobalRadiation() != null
 				&& data.getWindSpeed() != null && data.getWindDirection() != null;
 	}
+	
+	public static boolean isAllDataValid(WxdbWeatherData wd) {
+		return  (wd.getTemperature() >= -60 && wd.getTemperature() <= 60) 
+				&& (wd.getWindSpeed() >= 0 && wd.getWindSpeed() <= 80) 
+				&& (wd.getWindDirection() >= 0 && wd.getWindDirection() <= 360) 
+				&& (wd.getGlobalRadiation() >= 0 && wd.getGlobalRadiation() <= 1500);
+	}
 
 	public static boolean isNotImputable(WxdbWeatherData data) {
 		return data.getWindDirection() == null && data.getTemperature() == null && data.getGlobalRadiation() == null

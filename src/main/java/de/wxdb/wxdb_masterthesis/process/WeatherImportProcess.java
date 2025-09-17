@@ -308,6 +308,11 @@ public class WeatherImportProcess {
 
 		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
 		List<WxdbWeatherData> wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+		
+		// filtere fehlerhafte Datensätze aus
+		wxdbCsvWeatherData = wxdbCsvWeatherData.stream()
+				.filter(wd -> (WeatherDataValidator.isValid(wd) && WeatherDataValidator.isAllDataValid(wd)))
+				.collect(Collectors.toList());
 
 		// 3. Inserte die Wxdb Wetterdaten in unsere Datenbank
 		try {

@@ -403,7 +403,7 @@ public class WeatherImportProcess {
 	        return it.readAll();
 
 	    } catch (Exception e) { // nicht nur IOException
-	    	log.error("Error occured while reading CSV: ", e);
+	    	log.info("Error occured while reading CSV: ", e);
 	        throw new RuntimeException("Fehler beim Lesen/Deserialisieren der CSV-Datei", e);
 	    }
 	}

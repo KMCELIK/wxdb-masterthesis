@@ -1,5 +1,6 @@
 package de.wxdb.wxdb_masterthesis.api;
 
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,7 +24,11 @@ public interface WxdbApi {
 	 * @param csv file
 	 * @return {@link WxdbApiResponse}
 	 */
-	@PostMapping("/import/csv")
+	  @PostMapping(
+		      path = "/import/csv",
+		      consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+		      produces = MediaType.APPLICATION_JSON_VALUE
+		  )
 	WxdbApiResponse importCsv( @RequestParam MultipartFile csv,
 			@RequestParam String weatherStation);
 

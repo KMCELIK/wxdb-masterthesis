@@ -32,6 +32,7 @@ import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
 import de.wxdb.wxdb_masterthesis.dto.CsvWeatherDataRaw;
 import de.wxdb.wxdb_masterthesis.dto.DwdSourceData;
+import de.wxdb.wxdb_masterthesis.dto.WxdbApiResponse;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
 import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
 import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
@@ -302,11 +303,12 @@ public class WeatherImportProcess {
 
 	}
 
-	public void importCsv(MultipartFile csvFile, String weatherStation) {
-		// 1. Lese die CSV-Datei
+	public WxdbApiResponse importCsv(MultipartFile csvFile, String weatherStation) {
+		WxdbApiResponse response = new WxdbApiResponse();
 		log.info("Reading CSV-File from " + weatherStation);
-		Processlog processLog = insertWxdbService.startProcessLog("MANUAL-CSV-IMPORT", LocalDateTime.now());
 		
+		// 1. Lese die CSV-Datei
+		Processlog processLog = insertWxdbService.startProcessLog("MANUAL-CSV-IMPORT", LocalDateTime.now());
 		List<CsvWeatherDataRaw> csvDatasets = new ArrayList<CsvWeatherDataRaw>();
 		
 		try {
@@ -319,12 +321,26 @@ public class WeatherImportProcess {
 			}
 
 			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
-
+			response = new WxdbApiResponse(e, "Error occured while reading the csv-file", shortMessage);
+			return response;
 		}
 		log.info("Finished Mapping CSV File to csv-datasets");
 
 		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
-		List<WxdbWeatherData> wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+		List<WxdbWeatherData> wxdbCsvWeatherData = new ArrayList<>();
+		try {
+			wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+		} catch (RuntimeException e) {
+			log.error("Error occured in mapping the csv-file", e);
+			String shortMessage = e.getMessage();
+			if (shortMessage.length() > 1000) {
+				shortMessage = shortMessage.substring(0, 1000);
+			}
+
+			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+			response = new WxdbApiResponse(e, "Error occured while mapping the csv-file", shortMessage);
+			return response;
+		}
 		log.info("Finished mapping csv file to wxdb-weatherdatasets");
 		
 		// filtere fehlerhafte Datensätze aus
@@ -345,7 +361,11 @@ public class WeatherImportProcess {
 			}
 
 			insertWxdbService.completeProcessLog(processLog, false, e.getMessage() + shortMessage);
+			response = new WxdbApiResponse(e, "Error occured while inserting the csv-import", shortMessage);
+			return response;
 		}
+		
+		return response;
 	}
 
 	/**

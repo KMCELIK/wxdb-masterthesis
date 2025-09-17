@@ -21,7 +21,7 @@ public class WxdbApiDelegate implements WxdbApi {
 
 	@Override
 	public WxdbApiResponse importCsv(MultipartFile csv, String weatherStation) {
-		LOGGER.debug("Start manual csv import");
+		LOGGER.info("Start manual csv import for weather station: " + weatherStation);
 		WxdbApiResponse response = null;
 
 		try {

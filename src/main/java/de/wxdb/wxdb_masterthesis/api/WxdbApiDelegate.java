@@ -5,13 +5,16 @@ import java.time.LocalDate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import de.wxdb.wxdb_masterthesis.dto.WxdbApiResponse;
 import de.wxdb.wxdb_masterthesis.process.WeatherImportProcess;
 
-@Component
+@RestController
 public class WxdbApiDelegate implements WxdbApi {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(WxdbApiDelegate.class);
@@ -19,14 +22,15 @@ public class WxdbApiDelegate implements WxdbApi {
 	@Autowired
 	private WeatherImportProcess importProcess;
 
+	@PostMapping(path = "/api/import/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	@Override
-	public WxdbApiResponse importCsv(MultipartFile csv, String weatherStation) {
+	public WxdbApiResponse importCsv(@RequestPart("csv") MultipartFile csv,
+			@RequestPart("weatherStation") String weatherStation) {
 		LOGGER.info("Start manual csv import for weather station: " + weatherStation);
 		WxdbApiResponse response = null;
 
 		try {
-			importProcess.importCsv(csv, weatherStation);
-			response = new WxdbApiResponse();
+			response = importProcess.importCsv(csv, weatherStation);
 		} catch (RuntimeException e) {
 			LOGGER.error("Error while triggering csv import", e);
 			response = new WxdbApiResponse(e, "ERROR", "Error while triggering initial import.");
@@ -72,5 +76,7 @@ public class WxdbApiDelegate implements WxdbApi {
 
 		return response;
 	}
+	
+	
 
 }

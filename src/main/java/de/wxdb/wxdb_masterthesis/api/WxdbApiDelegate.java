@@ -5,8 +5,6 @@ import java.time.LocalDate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,7 +20,6 @@ public class WxdbApiDelegate implements WxdbApi {
 	@Autowired
 	private WeatherImportProcess importProcess;
 
-	@PostMapping(path = "/api/import/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	@Override
 	public WxdbApiResponse importCsv(@RequestPart("csvFile") MultipartFile csvFile,
 			@RequestPart("weatherStation") String weatherStation) {

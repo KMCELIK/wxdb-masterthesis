@@ -24,13 +24,9 @@ public interface WxdbApi {
 	 * @param csv file
 	 * @return {@link WxdbApiResponse}
 	 */
-	  @PostMapping(
-		      path = "/import/csv",
-		      consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
-		      produces = MediaType.APPLICATION_JSON_VALUE
-		  )
-	WxdbApiResponse importCsv( @RequestPart MultipartFile csv,
-			@RequestPart String weatherStation);
+	@PostMapping(path="/import/csv", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+	WxdbApiResponse importCsv( @RequestPart("csv") MultipartFile csv,
+			@RequestPart("weatherStation") String weatherStation);
 
 	/**
 	 * Triggers the initial Import which imports weather data beginning from the

@@ -24,13 +24,13 @@ public class WxdbApiDelegate implements WxdbApi {
 
 	@PostMapping(path = "/api/import/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	@Override
-	public WxdbApiResponse importCsv(@RequestPart("csv") MultipartFile csv,
+	public WxdbApiResponse importCsv(@RequestPart("csvFile") MultipartFile csvFile,
 			@RequestPart("weatherStation") String weatherStation) {
 		LOGGER.info("Start manual csv import for weather station: " + weatherStation);
 		WxdbApiResponse response = null;
 
 		try {
-			response = importProcess.importCsv(csv, weatherStation);
+			response = importProcess.importCsv(csvFile, weatherStation);
 		} catch (RuntimeException e) {
 			LOGGER.error("Error while triggering csv import", e);
 			response = new WxdbApiResponse(e, "ERROR", "Error while triggering initial import.");
@@ -76,7 +76,4 @@ public class WxdbApiDelegate implements WxdbApi {
 
 		return response;
 	}
-	
-	
-
 }

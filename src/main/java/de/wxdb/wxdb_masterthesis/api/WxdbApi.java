@@ -25,7 +25,7 @@ public interface WxdbApi {
 	 * @return {@link WxdbApiResponse}
 	 */
 	@PostMapping(path="/import/csv", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-	WxdbApiResponse importCsv( @RequestPart("csv") MultipartFile csv,
+	WxdbApiResponse importCsv( @RequestPart("csvFile") MultipartFile csvFile,
 			@RequestPart("weatherStation") String weatherStation);
 
 	/**

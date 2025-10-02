@@ -9,6 +9,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import de.wxdb.wxdb_masterthesis.dto.BrightskyApiSourceResponse;
 import de.wxdb.wxdb_masterthesis.dto.BrightskySynopResponse;
 
+/**
+ * Feign Client für die Bright Sky API
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @FeignClient(name = "brightskyClient", url = "${brightsky.base-url}")
 public interface BrightskyFeignClient {
 

@@ -12,6 +12,11 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+/**
+ * POJO Klasse für imputation_log.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @Entity
 @Table(name = "imputation_log")
 public class ImputationLogPojo {

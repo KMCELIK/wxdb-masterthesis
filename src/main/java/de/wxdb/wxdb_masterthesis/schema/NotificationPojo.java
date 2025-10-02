@@ -9,6 +9,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * POJO-Klasse für die Hinweise Tabelle.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @Entity
 @Table(name = "hinweise")
 public class NotificationPojo {

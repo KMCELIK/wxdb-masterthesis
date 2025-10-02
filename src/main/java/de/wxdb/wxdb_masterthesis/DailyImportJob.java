@@ -8,6 +8,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import de.wxdb.wxdb_masterthesis.process.WeatherImportProcess;
 
+/**
+ * DailyImportJob Execution Class
+ * 
+ * @author Kaan Mustafa Celik
+ */
 public class DailyImportJob implements Job {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(DailyImportJob.class);
@@ -23,7 +28,7 @@ public class DailyImportJob implements Job {
 			importProcess.importRealtimeWeatherData();
 			LOGGER.info("Finished Quartz-Job: Import realtimeWeatherData");
 		} catch (Exception e) {
-			LOGGER.error("❌ Fehler beim Ausführen des Jobs: {}", e.getMessage(), e);
+			LOGGER.error("Fehler beim Ausführen des Jobs: {}", e.getMessage(), e);
 		}
 
 	}

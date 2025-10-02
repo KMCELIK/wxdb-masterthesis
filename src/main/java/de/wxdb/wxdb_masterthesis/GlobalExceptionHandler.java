@@ -7,6 +7,11 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+/**
+ * ExceptionHandler Klasse
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
   @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)

@@ -6,6 +6,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import de.wxdb.wxdb_masterthesis.schema.Processlog;
 
+/**
+ * JPA Repository für die Prozesslog Tabelle.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 public interface ProzessLogRepository extends JpaRepository<Processlog, Long> {
 
     // Optional: Prozesse nach Name filtern

@@ -10,7 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import de.wxdb.wxdb_masterthesis.dto.WxdbApiResponse;
 
 /**
- * API Class.
+ * API interface.
  * 
  * @author Kaan Mustafa Celik
  */

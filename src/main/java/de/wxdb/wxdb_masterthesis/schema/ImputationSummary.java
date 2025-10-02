@@ -14,6 +14,11 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 
+/**
+ * POJO, Entity Klasse für die imputation_zusammenfassung Tabelle.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @Entity
 @Table(name = "imputation_zusammenfassung")
 public class ImputationSummary {

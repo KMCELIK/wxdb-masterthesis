@@ -11,6 +11,11 @@ import org.springframework.context.annotation.Configuration;
 
 import de.wxdb.wxdb_masterthesis.DailyImportJob;
 
+/**
+ * Quartz Konfigurationsklasse für den Batch-Job.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @Configuration
 public class QuartzConfig {
 

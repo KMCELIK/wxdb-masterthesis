@@ -12,6 +12,11 @@ import org.springframework.web.multipart.MultipartFile;
 import de.wxdb.wxdb_masterthesis.dto.WxdbApiResponse;
 import de.wxdb.wxdb_masterthesis.process.WeatherImportProcess;
 
+/**
+ * Ausführungsklasse des {@link WxdbApi} interfaces.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @RestController
 public class WxdbApiDelegate implements WxdbApi {
 

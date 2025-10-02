@@ -46,6 +46,11 @@ import de.wxdb.wxdb_masterthesis.utils.LocalDateTimeRange;
 import de.wxdb.wxdb_masterthesis.utils.WeatherDataMapper;
 import de.wxdb.wxdb_masterthesis.utils.WeatherDataValidator;
 
+/**
+ * Diese Klasse beschreibt die Ausführung aller Importierungsprozesse.
+ * 
+ * @author Kaan Mustafa Celik
+ */
 @Component
 public class WeatherImportProcess {
 

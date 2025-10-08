@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import de.wxdb.wxdb_masterthesis.dto.CsvWeatherDataRaw;
@@ -13,6 +15,7 @@ import de.wxdb.wxdb_masterthesis.dto.DwdSynopWeatherData;
 import de.wxdb.wxdb_masterthesis.dto.WeatherHistoricalData;
 import de.wxdb.wxdb_masterthesis.dto.WeatherRealtimeData;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
+import de.wxdb.wxdb_masterthesis.schema.WxdbWeatherDataCsvPojo;
 
 /**
  * Mapper class to map the different weather Data types to
@@ -60,8 +63,8 @@ public class WeatherDataMapper {
 	 * @param realtimeData real time data.
 	 * @return WxdbWeatherData.
 	 */
-	public static WxdbWeatherData fromCsvWeatherData(CsvWeatherDataRaw csvWeatherData, String weatherStationName) {
-		WxdbWeatherData data = new WxdbWeatherData();
+	public static WxdbWeatherDataCsvPojo fromCsvWeatherData(CsvWeatherDataRaw csvWeatherData, String weatherStationName) {
+		WxdbWeatherDataCsvPojo data = new WxdbWeatherDataCsvPojo();
 		
 	    // Zeitstempel setzen (Datum + Uhrzeit)
 	    try {
@@ -116,7 +119,7 @@ public class WeatherDataMapper {
 		return dwdList.stream().map(WeatherDataMapper::mapSingle).collect(Collectors.toList());
 	}
 	
-	public static List<WxdbWeatherData> mapCsvWeatherDataList(List<CsvWeatherDataRaw> csvWeatherList, String weatherStationName) {
+	public static List<WxdbWeatherDataCsvPojo> mapCsvWeatherDataList(List<CsvWeatherDataRaw> csvWeatherList, String weatherStationName) {
 		return csvWeatherList.stream().map(cwd -> WeatherDataMapper.fromCsvWeatherData(cwd, weatherStationName)).collect(Collectors.toList());
 	}
 
@@ -125,7 +128,7 @@ public class WeatherDataMapper {
 		wxdb.setTime(dwd.getTimestamp() != null ? dwd.getTimestamp().toLocalDateTime() : null);
 		wxdb.setTemperature(dwd.getTemperature());
 
-		// Windrichtung
+		// Windrichtung, eigentlich sollen nur die 10 minuten intervalle hier erhalten werden.
 		Integer windDirection = dwd.getWind_direction_10();
 		if (windDirection == null) {
 		    windDirection = dwd.getWind_direction_30();
@@ -145,15 +148,22 @@ public class WeatherDataMapper {
 		}
 		wxdb.setWindSpeed(windSpeed != null ? windSpeed.doubleValue() : null);
 
-		// Globalstrahlung
+		// Globalstrahlung (kWh/m² pro Intervall)
 		Double globalRadiation = dwd.getSolar_10();
-		if (globalRadiation == null) {
-		    globalRadiation = dwd.getSolar_30();
+		if (globalRadiation != null && Double.isFinite(globalRadiation)) {
+		    // unboxing ist sicher, weil globalRadiation != null
+		    globalRadiation = globalRadiation * 6000d; // 10 min -> Faktor 6000
+		} else {
+		    // Fallback auf 60-min-Wert (falls vorhanden)
+		    Double solar60 = dwd.getSolar_60();
+		    if (solar60 != null && Double.isFinite(solar60)) {
+		        globalRadiation = solar60 * 1000d; // 60 min -> Faktor 1000
+		    } else {
+		        globalRadiation = null; // kein Wert verfügbar
+		    }
 		}
-		if (globalRadiation == null) {
-		    globalRadiation = dwd.getSolar_60();
-		}
-		wxdb.setGlobalRadiation(globalRadiation != null ? globalRadiation.doubleValue() : null);
+		
+		wxdb.setGlobalRadiation(globalRadiation);
 
 		wxdb.setDatasource("DWD");
 		wxdb.setWeatherStationSource("SYNOP-Brightsky-" + dwd.getSource_id());
@@ -170,6 +180,57 @@ public class WeatherDataMapper {
 	public static List<WxdbWeatherData> mapDwdWeatherDataList(List<DwdHourlyWeatherData> dwdDataList) {
 		return dwdDataList.stream().map(WeatherDataMapper::map).collect(Collectors.toList());
 	}
+	
+	 /**
+     * Mappt eine Liste von {@link WxdbWeatherData} nach
+     * {@link WxdbWeatherDataCsvPojo}.
+     *
+     * @param source Liste von WxdbWeatherData
+     * @return Liste von WxdbWeatherDataCsvPojo (nie null)
+     */
+    public static List<WxdbWeatherDataCsvPojo> mapToCsvPojoList(List<WxdbWeatherData> source) {
+        if (source == null || source.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return source.stream()
+                     .filter(Objects::nonNull)
+                     .map(WeatherDataMapper::mapToCsvPojo)
+                     .collect(Collectors.toList());
+    }
+
+    /**
+     * Einzelmapping von WxdbWeatherData -> WxdbWeatherDataCsvPojo
+     */
+    private static WxdbWeatherDataCsvPojo mapToCsvPojo(WxdbWeatherData src) {
+        if (src == null) return null;
+
+        WxdbWeatherDataCsvPojo dst = new WxdbWeatherDataCsvPojo();
+
+        // Weather related
+        dst.setTime(src.getTime());
+        dst.setTemperature(src.getTemperature());
+        dst.setWindDirection(src.getWindDirection());
+        dst.setWindSpeed(src.getWindSpeed());
+        dst.setGlobalRadiation(src.getGlobalRadiation());
+
+        // Data source related (wenn source null, benutze Default)
+        dst.setDatasource(src.getDatasource() != null ? src.getDatasource() : DEFAULT_INFLUXDB_SOURCE);
+        dst.setWeatherStationSource(src.getWeatherStationSource() != null ? src.getWeatherStationSource() : DEFAULT_INFLUXDB_STATION);
+        dst.setStationSourceId(src.getStationSourceId());
+        dst.setRealtime(src.isRealtime());
+
+        // POJO meta (behalte vorhandene Werte, sonst Default)
+        dst.setLastChangedBy(src.getLastChangedBy() != null ? src.getLastChangedBy() : "SYSTEM");
+        dst.setLastChangedTime(src.getLastChangedTime() != null ? src.getLastChangedTime() : LocalDateTime.now());
+        dst.setVersion(src.getVersion());
+
+        // Imputation
+        dst.setImputed(src.isImputed());
+        dst.setZusammenfassung(src.getZusammenfassung());
+
+        // ID bewusst nicht gesetzt (DB/insert-Operation soll ID vergeben)
+        return dst;
+    }
 
 	public static WxdbWeatherData map(DwdHourlyWeatherData dwdData) {
 		WxdbWeatherData wxdb = new WxdbWeatherData();
@@ -181,7 +242,14 @@ public class WeatherDataMapper {
 		wxdb.setTemperature(dwdData.getTemperature());
 		wxdb.setWindDirection(dwdData.getWind_direction() != null ? dwdData.getWind_direction().doubleValue() : null);
 		wxdb.setWindSpeed(dwdData.getWind_speed());
-		wxdb.setGlobalRadiation(dwdData.getSolar());
+		
+		// Globale Strahlung in InfluxDB W/m² umwandeln.
+		Double solarDwd = dwdData.getSolar();
+		if (solarDwd != null && Double.isFinite(solarDwd)) {
+			wxdb.setGlobalRadiation(solarDwd*1000d);
+		}  else {
+			wxdb.setGlobalRadiation(null);
+		}
 
 		wxdb.setDatasource("DWD");
 		wxdb.setWeatherStationSource("DWD-" + dwdData.getSource_id());

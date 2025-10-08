@@ -63,8 +63,8 @@ public class WeatherDataMapper {
 	 * @param realtimeData real time data.
 	 * @return WxdbWeatherData.
 	 */
-	public static WxdbWeatherDataCsvPojo fromCsvWeatherData(CsvWeatherDataRaw csvWeatherData, String weatherStationName) {
-		WxdbWeatherDataCsvPojo data = new WxdbWeatherDataCsvPojo();
+	public static WxdbWeatherData fromCsvWeatherData(CsvWeatherDataRaw csvWeatherData, String weatherStationName) {
+		WxdbWeatherData data = new WxdbWeatherData();
 		
 	    // Zeitstempel setzen (Datum + Uhrzeit)
 	    try {
@@ -119,8 +119,9 @@ public class WeatherDataMapper {
 		return dwdList.stream().map(WeatherDataMapper::mapSingle).collect(Collectors.toList());
 	}
 	
-	public static List<WxdbWeatherDataCsvPojo> mapCsvWeatherDataList(List<CsvWeatherDataRaw> csvWeatherList, String weatherStationName) {
+	public static List<WxdbWeatherData> mapCsvWeatherDataList(List<CsvWeatherDataRaw> csvWeatherList, String weatherStationName) {
 		return csvWeatherList.stream().map(cwd -> WeatherDataMapper.fromCsvWeatherData(cwd, weatherStationName)).collect(Collectors.toList());
+		
 	}
 
 	public static WxdbWeatherData mapSingle(DwdSynopWeatherData dwd) {

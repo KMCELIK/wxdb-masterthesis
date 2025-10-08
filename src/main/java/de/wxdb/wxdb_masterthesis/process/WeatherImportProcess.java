@@ -334,12 +334,14 @@ public class WeatherImportProcess {
 
 		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
 		List<WxdbWeatherDataCsvPojo> wxdbCsvWeatherData = new ArrayList<>();
-		List<WxdbWeatherDataCsvPojo> notImputableWeatherData = new ArrayList<>();
-		List<WxdbWeatherDataCsvPojo> imputableWeatherdata = new ArrayList<>();
+		List<WxdbWeatherData> wxdbData = new ArrayList<>();
+		List<WxdbWeatherData> notImputableWeatherData = new ArrayList<>();
+		List<WxdbWeatherData> imputableWeatherdata = new ArrayList<>();
 		Map<Long, Integer> stationIdToDistance = new HashMap<Long, Integer>();
+		Map<LocalDateTime, WxdbWeatherData> correctedDataMap = new HashMap<>();
 		
 		try {
-			wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
+			wxdbData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
 		} catch (RuntimeException e) {
 			log.error("Error occured in mapping the csv-file", e);
 			String shortMessage = e.getMessage();
@@ -354,22 +356,11 @@ public class WeatherImportProcess {
 		log.info("Finished mapping csv file to wxdb-weatherdatasets");
 
 		// filtere fehlerhafte Datensätze aus
-		wxdbCsvWeatherData = wxdbCsvWeatherData.stream().filter(wd -> {
-			if (WeatherDataValidator.isValid(wd) && WeatherDataValidator.isAllDataValid(wd)) {
-				return true;
-			} else {
-				if (WeatherDataValidator.isNotImputable(wd)) {
-					notImputableWeatherData.add(wd);
-				} else {
-					imputableWeatherdata.add(wd);
-				}
-				return false;
-			}
-		}).collect(Collectors.toList());
+
+		removeInvalidDatasets(wxdbData, imputableWeatherdata, notImputableWeatherData, correctedDataMap);
 		log.info("Filtered all invalid datasets out, start inserting weatherData");
 		
 
-		Map<LocalDateTime, WxdbWeatherDataCsvPojo> correctedDataMap = new HashMap<>();
 		List<WxdbWeatherData> dwdDatasets = new ArrayList<>();
 		// Imputationslogik für die CSV-Wetterdaten
 		if (!imputableWeatherdata.isEmpty() || !notImputableWeatherData.isEmpty()) {
@@ -383,7 +374,7 @@ public class WeatherImportProcess {
 			List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange
 					.groupToBroadRanges(new ArrayList<>(invalidTimestamps), 30);
 
-			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
+			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km --> Breiten und Längengrad von Lueck
 			List<DwdSourceData> stations = brightskyApiService.getDwdStations(51.3184813, 7.3269221);
 			stationIdToDistance = filterNearestSources(stations, 100).stream()
 					.collect(Collectors.toMap(DwdSourceData::getId, DwdSourceData::getDistance));
@@ -408,8 +399,14 @@ public class WeatherImportProcess {
 			}
 		}
 		
-		WeatherDataValidator.deduplicateAndCorrectInvalidData(dwdDatasets, dwdDatasets, null, dwdDatasets, stationIdToDistance);
-		WeatherDataMapper.mapToCsvPojoList(dwdDatasets);
+		wxdbData.addAll(WeatherDataValidator.deduplicateAndCorrectInvalidData(imputableWeatherdata, notImputableWeatherData,
+				new TreeSet<LocalDateTime>(correctedDataMap.keySet()), dwdDatasets, stationIdToDistance));
+		wxdbData = WeatherDataValidator.deduplicateByTimestamp(wxdbData);
+
+		// sortiere die Datensätze
+		wxdbData.sort(Comparator.comparing(WxdbWeatherData::getTime));
+		
+		wxdbCsvWeatherData =  WeatherDataMapper.mapToCsvPojoList(wxdbData);
 		
 		// 3. Inserte die Wxdb Wetterdaten in unsere Datenbank
 		try {

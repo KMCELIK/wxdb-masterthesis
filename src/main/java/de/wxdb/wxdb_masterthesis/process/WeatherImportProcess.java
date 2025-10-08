@@ -413,6 +413,7 @@ public class WeatherImportProcess {
 			insertWxdbService.insertWeatherDataCsv(wxdbCsvWeatherData);
 			insertWxdbService.completeProcessLog(processLog, true,
 					wxdbCsvWeatherData.size() + " Datensätze wurden erfolgreich importiert.");
+			log.info("CSV Import finished [inserted: " + wxdbCsvWeatherData.size() + " datasets from csv file ]");
 		} catch (RuntimeException e) {
 			String shortMessage = e.getMessage();
 			if (shortMessage.length() > 1000) {

@@ -38,7 +38,6 @@ import de.wxdb.wxdb_masterthesis.schema.ImputationLogPojo;
 import de.wxdb.wxdb_masterthesis.schema.ImputationSummary;
 import de.wxdb.wxdb_masterthesis.schema.NotificationPojo;
 import de.wxdb.wxdb_masterthesis.schema.Processlog;
-import de.wxdb.wxdb_masterthesis.schema.WxdbWeatherDataCsvPojo;
 import de.wxdb.wxdb_masterthesis.service.BrightskyApiService;
 import de.wxdb.wxdb_masterthesis.service.InfluxDbReadWeatherDataService;
 import de.wxdb.wxdb_masterthesis.service.InsertWxdbService;
@@ -333,11 +332,7 @@ public class WeatherImportProcess {
 		log.info("Finished Mapping CSV File to csv-datasets");
 
 		// 2. Mappe die Daten in eine Liste von WxdbWetterdaten
-		List<WxdbWeatherDataCsvPojo> wxdbCsvWeatherData = new ArrayList<>();
-		List<WxdbWeatherDataCsvPojo> notImputableWeatherData = new ArrayList<>();
-		List<WxdbWeatherDataCsvPojo> imputableWeatherdata = new ArrayList<>();
-		Map<Long, Integer> stationIdToDistance = new HashMap<Long, Integer>();
-		
+		List<WxdbWeatherData> wxdbCsvWeatherData = new ArrayList<>();
 		try {
 			wxdbCsvWeatherData = WeatherDataMapper.mapCsvWeatherDataList(csvDatasets, weatherStation);
 		} catch (RuntimeException e) {
@@ -352,68 +347,16 @@ public class WeatherImportProcess {
 			return response;
 		}
 		log.info("Finished mapping csv file to wxdb-weatherdatasets");
-
+		
 		// filtere fehlerhafte Datensätze aus
-		wxdbCsvWeatherData = wxdbCsvWeatherData.stream().filter(wd -> {
-			if (WeatherDataValidator.isValid(wd) && WeatherDataValidator.isAllDataValid(wd)) {
-				return true;
-			} else {
-				if (WeatherDataValidator.isNotImputable(wd)) {
-					notImputableWeatherData.add(wd);
-				} else {
-					imputableWeatherdata.add(wd);
-				}
-				return false;
-			}
-		}).collect(Collectors.toList());
+		wxdbCsvWeatherData = wxdbCsvWeatherData.stream()
+				.filter(wd -> (WeatherDataValidator.isValid(wd) && WeatherDataValidator.isAllDataValid(wd)))
+				.collect(Collectors.toList());
 		log.info("Filtered all invalid datasets out, start inserting weatherData");
-		
-
-		Map<LocalDateTime, WxdbWeatherDataCsvPojo> correctedDataMap = new HashMap<>();
-		List<WxdbWeatherData> dwdDatasets = new ArrayList<>();
-		// Imputationslogik für die CSV-Wetterdaten
-		if (!imputableWeatherdata.isEmpty() || !notImputableWeatherData.isEmpty()) {
-			log.info("Es existieren noch {} ungültige Datensätze. Versuche externe Quellen (Brightsky-DWD)",
-					notImputableWeatherData.size() + imputableWeatherdata.size());
-
-			// Bestimmen der Zeiträume für die fehlerhaften Zeiträume falls es mehrere Zeitraum lücken gibt.
-			Set<LocalDateTime> invalidTimestamps = correctedDataMap.keySet();
-
-			// wenn es Lücken gibt welche zu lang sind z.B. 30 Stunden, dann werden verteilte Zeiträume erstellt (um die Schnittstelle nicht zu sehr auszulasten)
-			List<LocalDateTimeRange> invalidRanges = LocalDateTimeRange
-					.groupToBroadRanges(new ArrayList<>(invalidTimestamps), 30);
-
-			// Filterung der 100 nahsten Wetterstationen in einem Umkreis von 50km
-			List<DwdSourceData> stations = brightskyApiService.getDwdStations(51.3184813, 7.3269221);
-			stationIdToDistance = filterNearestSources(stations, 100).stream()
-					.collect(Collectors.toMap(DwdSourceData::getId, DwdSourceData::getDistance));
-
-			for (LocalDateTimeRange range : invalidRanges) {
-				boolean endsWithinLast31h = range.getEndDate().isAfter(LocalDateTime.now().minusHours(31));
-
-				if (endsWithinLast31h) {
-					// In diesem Fall ist der Zeitraum ganz oder teilweise innerhalb der letzten 31
-					// Stunden - 10min Datensätze
-					BrightskySynopResponse synop = brightskyApiService
-							.getDwdData10MinutesInterval(new ArrayList<>(stationIdToDistance.keySet()));
-					dwdDatasets.addAll(extractValidSynopWeatherData(synop));
-				}
-
-				BrightskyApiSourceResponse hourly = brightskyApiService.getDwdWeatherDataHourlyInterval(
-						range.getStartDate().toLocalDate(), range.getEndDate().toLocalDate(),
-						new ArrayList<>(stationIdToDistance.keySet()));
-				// erhalte DWD-Stundendatensätze, filtere jedoch direkt die fehlerhaften Datensätze raus.
-				dwdDatasets.addAll(WeatherDataMapper.mapDwdWeatherDataList(hourly.getWeather()).stream()
-						.filter(vd -> WeatherDataValidator.isValid(vd)).collect(Collectors.toList()));
-			}
-		}
-		
-		WeatherDataValidator.deduplicateAndCorrectInvalidData(dwdDatasets, dwdDatasets, null, dwdDatasets, stationIdToDistance);
-		WeatherDataMapper.mapToCsvPojoList(dwdDatasets);
 		
 		// 3. Inserte die Wxdb Wetterdaten in unsere Datenbank
 		try {
-			insertWxdbService.insertWeatherDataCsv(wxdbCsvWeatherData);
+			insertWxdbService.insertWeatherData(wxdbCsvWeatherData);
 			insertWxdbService.completeProcessLog(processLog, true,
 					wxdbCsvWeatherData.size() + " Datensätze wurden erfolgreich importiert.");
 		} catch (RuntimeException e) {

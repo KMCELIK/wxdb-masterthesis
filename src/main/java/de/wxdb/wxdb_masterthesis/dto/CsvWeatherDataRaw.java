@@ -13,16 +13,15 @@ public class CsvWeatherDataRaw {
 	@JsonProperty("Zeit")
 	private String zeit;
 
-	// 13 ist der Kanal
 	@JsonProperty("Lufttemperatur_13 C")
 	private String temperatur;
-	// 13 ist der Kanal
+
 	@JsonProperty("Windgeschw._13 m/s")
 	private String windSpeed;
-	// 13 ist der Kanal
+
 	@JsonProperty("Windrichtung_13 deg")
 	private String windDirection;
-	// 13 ist der Kanal
+
 	@JsonProperty("Globalstrahlung_13 W/m2")
 	private String globalstrahlung;
 

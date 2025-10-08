@@ -25,6 +25,10 @@ o Klicke auf Add… und wähle den Pfad zu deinem Temurin 17 JDK aus.
 o Setze das Häkchen bei diesem JDK, damit es als Standard verwendet wird.
 Hinweis: Auch andere IDEs (z. B. IntelliJ, VSCode) können verwendet werden. Wichtig ist nur, dass Temurin 17 korrekt eingebunden ist.
 
+MySQL-Datenbank Installieren:
+1. Installiere MySQL mit der Version 8.*
+2. Führe den FlyWay-Skript als root user aus.
+
 Repository herunterladen
 ➔ Einfachste Methode: GitHub Desktop
 1. GitHub Desktop öffnen. (Download: https://desktop.github.com/download/)
@@ -47,7 +51,6 @@ Lädt das gesamte Repository als ZIP-Datei herunter, die du anschließend manuel
 
 3. Prüfe, ob der Projektordner korrekt heruntergeladen wurde.
 
-
 Projekt in die IDE integrieren
 ➔ Wenn es ein Maven-Projekt ist:
 1. Import starten:
@@ -64,4 +67,5 @@ o In Eclipse: File > Import > General > Existing Projects into Workspace.
 3. Projekt importieren und ggf. Build-Path prüfen:
 o Rechtsklick auf das Projekt > Properties > Java Build Path.
 o Prüfen, ob Temurin 17 JDK verwendet wird.
+4. Passe die Propertiesund die YAML-File in dem Projektordner an, sodass eine Verbindung zu Ihrer Datenbank aufgebaut werden kann falls das System Lokal genutzt wird.
 

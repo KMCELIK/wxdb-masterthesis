@@ -155,6 +155,31 @@ CREATE TABLE `wetterdaten` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+DROP TABLE IF EXISTS `wetterdaten_csv`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `wetterdaten_csv` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `time` datetime DEFAULT NULL,
+  `temperature` double DEFAULT NULL,
+  `wind_direction` double DEFAULT NULL,
+  `wind_speed` double DEFAULT NULL,
+  `global_radiation` double DEFAULT NULL,
+  `datasource` varchar(255) DEFAULT NULL,
+  `weather_station_source` varchar(255) DEFAULT NULL,
+  `station_source_id` bigint DEFAULT NULL,
+  `last_changed_by` varchar(255) DEFAULT NULL,
+  `last_changed_time` datetime DEFAULT NULL,
+  `version` int DEFAULT NULL,
+  `is_realtime` bit(1) NOT NULL,
+  `imputed` tinyint(1) DEFAULT '0',
+  `imputation_zusammenfassung_id` bigint DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `imputation_zusammenfassung_id` (`imputation_zusammenfassung_id`),
+  CONSTRAINT `wetterdaten_csv_ibfk_1` FOREIGN KEY (`imputation_zusammenfassung_id`) REFERENCES `imputation_zusammenfassung` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 --
 -- Dumping data for table `wetterdaten`
 --

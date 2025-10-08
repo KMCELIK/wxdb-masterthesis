@@ -3,10 +3,15 @@ package de.wxdb.wxdb_masterthesis.dto;
 import java.time.ZonedDateTime;
 import java.util.Objects;
 
+/**
+ * DTO für die Synop-Echtzeitwetterdaten
+ * 
+ * @author Kaan Mustafa Celik
+ */
 public class DwdSynopWeatherData {
 
 	private ZonedDateTime timestamp;
-	private int source_id;
+	private int source_id; // id der Station
 	private Double cloud_cover;
 	private String condition;
 	private Double dew_point;
@@ -20,9 +25,9 @@ public class DwdSynopWeatherData {
 	private Double precipitation_10;
 	private Double precipitation_30;
 	private Double precipitation_60;
-	private Double solar_10;
-	private Double solar_30;
-	private Double solar_60;
+	private Double solar_10; // 10 min interval
+	private Double solar_30; // 30 min 
+	private Double solar_60; // 60 min interval
 	private Integer sunshine_10;
 	private Integer sunshine_30;
 	private Integer sunshine_60;

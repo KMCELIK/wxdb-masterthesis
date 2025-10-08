@@ -13,10 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import de.wxdb.wxdb_masterthesis.db.NotificationRepository;
 import de.wxdb.wxdb_masterthesis.db.ProzessLogRepository;
+import de.wxdb.wxdb_masterthesis.db.WxdbWeatherDataCsvJpa;
 import de.wxdb.wxdb_masterthesis.db.WxdbWeatherDataJpa;
 import de.wxdb.wxdb_masterthesis.dto.WxdbWeatherData;
 import de.wxdb.wxdb_masterthesis.schema.NotificationPojo;
 import de.wxdb.wxdb_masterthesis.schema.Processlog;
+import de.wxdb.wxdb_masterthesis.schema.WxdbWeatherDataCsvPojo;
 
 @Service
 public class InsertWxdbService {
@@ -26,6 +28,9 @@ public class InsertWxdbService {
 
 	@Autowired
 	private WxdbWeatherDataJpa weatherRepo;
+	
+	@Autowired
+	private WxdbWeatherDataCsvJpa csvWeatherRepo;
 
 	@Autowired
 	private ProzessLogRepository logRepo;
@@ -53,6 +58,11 @@ public class InsertWxdbService {
 	@Transactional
 	public void insertWeatherData(List<WxdbWeatherData> weatherDataList) {
 		weatherRepo.saveAll(weatherDataList);
+	}
+	
+	@Transactional
+	public void insertWeatherDataCsv(List<WxdbWeatherDataCsvPojo> weatherDataList) {
+		csvWeatherRepo.saveAll(weatherDataList);
 	}
 	
 	@Transactional

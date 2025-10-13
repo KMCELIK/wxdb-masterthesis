@@ -1,6 +1,8 @@
 package de.wxdb.wxdb_masterthesis.api;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,15 +44,25 @@ public class WxdbApiDelegate implements WxdbApi {
 	}
 
 	@Override
-	public WxdbApiResponse triggerInitialImport() {
-		LocalDate startDate = LocalDate.of(LocalDate.now().getYear(), 1, 1);
+	public WxdbApiResponse triggerInitialImport(String startDate) {
+		LocalDate beginDate = LocalDate.of(LocalDate.now().getYear(), 1, 1);
+
+		if (startDate != null && !startDate.isEmpty()) {
+			try {
+				beginDate = LocalDate.parse(startDate, DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+			} catch (DateTimeParseException e) {
+				// Optional: Logging, falls ungültiges Format übergeben wurde
+				LOGGER.warn("Invalid date format for startDate: {}. Expected format: dd.MM.yyyy", startDate);
+			}
+		}
+
 		LocalDate endDate = LocalDate.now();
 		LOGGER.debug("Start initial import from date {} till {}", startDate, endDate);
 
 		WxdbApiResponse response = null;
 
 		try {
-			importProcess.importWeatherData(startDate, endDate);
+			importProcess.importWeatherData(beginDate, endDate);
 			response = new WxdbApiResponse();
 		} catch (RuntimeException e) {
 			LOGGER.error("Error while triggering initial import", e);

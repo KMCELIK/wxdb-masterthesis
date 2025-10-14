@@ -65,13 +65,14 @@ public class WxdbApiDelegate implements WxdbApi {
 			}
 		}
 
+		LOGGER.info("Date Range for Import is set to {} till {}", beginDate, endDate);
 		WxdbApiResponse response = null;
 		if (beginDate.isEqual(endDate) || beginDate.isAfter(endDate)) {
 			response = new WxdbApiResponse(null, "ERROR",
 					"startDate is equals or after current Date, please choose a startDate which is before the current date.");
 		} else {
 
-			LOGGER.debug("Start initial import from date {} till {}", startDate, endDate);
+			LOGGER.debug("Start initial import from date {} till {}", beginDate, endDate);
 			try {
 				importProcess.importWeatherData(beginDate, endDate);
 				response = new WxdbApiResponse();

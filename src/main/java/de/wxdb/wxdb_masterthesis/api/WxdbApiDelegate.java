@@ -2,6 +2,7 @@ package de.wxdb.wxdb_masterthesis.api;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
 
@@ -51,7 +52,13 @@ public class WxdbApiDelegate implements WxdbApi {
 
 		if (startDate != null && !startDate.isEmpty()) {
 			try {
-				beginDate = LocalDate.parse(startDate, DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMAN));
+	            // Fallback: Parser mit explizitem Locale + symbolischen Ziffern
+	            DateTimeFormatter formatter = new DateTimeFormatterBuilder()
+	                    .parseLenient()
+	                    .appendPattern("dd.MM.yyyy")
+	                    .toFormatter(Locale.GERMANY);
+
+	            beginDate = LocalDate.parse(startDate, formatter);
 			} catch (DateTimeParseException e) {
 				// Optional: Logging, falls ungültiges Format übergeben wurde
 				LOGGER.warn("Invalid date format for startDate: {}. Expected format: dd.MM.yyyy", startDate);

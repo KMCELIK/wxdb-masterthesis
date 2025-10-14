@@ -9,6 +9,7 @@ import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,8 +46,8 @@ public class WxdbApiDelegate implements WxdbApi {
 		return response;
 	}
 
-	@Override
-	public WxdbApiResponse triggerInitialImport(String startDate) {
+	@Override // #Hotfix: Die startDate Annotation muss gegeben sein sonst kommt es serverseitig zu einem Fehler!
+	public WxdbApiResponse triggerInitialImport(@RequestParam(value = "startDate", required = false) String startDate) {
 		LocalDate beginDate = LocalDate.of(LocalDate.now().getYear(), 1, 1);
 		LocalDate endDate = LocalDate.now();
 

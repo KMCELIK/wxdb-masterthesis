@@ -3,6 +3,7 @@ package de.wxdb.wxdb_masterthesis.api;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,27 +47,31 @@ public class WxdbApiDelegate implements WxdbApi {
 	@Override
 	public WxdbApiResponse triggerInitialImport(String startDate) {
 		LocalDate beginDate = LocalDate.of(LocalDate.now().getYear(), 1, 1);
+		LocalDate endDate = LocalDate.now();
 
 		if (startDate != null && !startDate.isEmpty()) {
 			try {
-				beginDate = LocalDate.parse(startDate, DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+				beginDate = LocalDate.parse(startDate, DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMAN));
 			} catch (DateTimeParseException e) {
 				// Optional: Logging, falls ungültiges Format übergeben wurde
 				LOGGER.warn("Invalid date format for startDate: {}. Expected format: dd.MM.yyyy", startDate);
 			}
 		}
 
-		LocalDate endDate = LocalDate.now();
-		LOGGER.debug("Start initial import from date {} till {}", startDate, endDate);
-
 		WxdbApiResponse response = null;
+		if (beginDate.isEqual(endDate) || beginDate.isAfter(endDate)) {
+			response = new WxdbApiResponse(null, "ERROR",
+					"startDate is equals or after current Date, please choose a startDate which is before the current date.");
+		} else {
 
-		try {
-			importProcess.importWeatherData(beginDate, endDate);
-			response = new WxdbApiResponse();
-		} catch (RuntimeException e) {
-			LOGGER.error("Error while triggering initial import", e);
-			response = new WxdbApiResponse(e, "ERROR", "Error while triggering initial import.");
+			LOGGER.debug("Start initial import from date {} till {}", startDate, endDate);
+			try {
+				importProcess.importWeatherData(beginDate, endDate);
+				response = new WxdbApiResponse();
+			} catch (RuntimeException e) {
+				LOGGER.error("Error while triggering initial import", e);
+				response = new WxdbApiResponse(e, "ERROR", "Error while triggering initial import.");
+			}
 		}
 
 		return response;

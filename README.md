@@ -69,3 +69,7 @@ o Rechtsklick auf das Projekt > Properties > Java Build Path.
 o Prüfen, ob Temurin 17 JDK verwendet wird.
 4. Passe die Propertiesund die YAML-File in dem Projektordner an, sodass eine Verbindung zu Ihrer Datenbank aufgebaut werden kann falls das System Lokal genutzt wird.
 
+
+Nachdem nun alle wichtigen Partitionen installiert sind, müssen die Settings für die Konfiguration in den properties und YAML-Files gesetzt werden.
+Dafür brauchen wir ein funktionierendes authentifizierungstoken der InfluxDB und setzen diesen Token in die Properties, sowie die Login Informationen (User, Password) für unsere relationale Zieldatenbank.
+Sind diese gesetzt sollte das wxdb-Backend ausführbar sein.
